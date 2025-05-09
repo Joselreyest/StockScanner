@@ -15,13 +15,61 @@ A customizable stock scanner built with **Streamlit** and **Yahoo Finance**, des
   - Gap-ups (>2% over previous high)
 - 🗂️ Download results as CSV
 - ⚡ Fast scanning of the full S&P 500
-- 🌐 Fully deployable to [Streamlit Cloud](https://streamlit.io/cloud)
+- 🌐 Deployable on [Streamlit Cloud](https://streamlit.io/cloud)
 
 ---
 
 ## 🔧 Setup & Run Locally
 
-### 1. Clone this repo
 ```bash
 git clone https://github.com/yourusername/stock-strategy-scanner.git
 cd stock-strategy-scanner
+pip install -r requirements.txt
+streamlit run stock_scanner_app.py
+```
+
+---
+
+## 📸 Screenshot
+
+<!-- Replace this with a real screenshot -->
+![Scanner UI](https://via.placeholder.com/800x400?text=App+Screenshot)
+
+---
+
+## 📚 Technologies
+
+- Streamlit
+- yFinance
+- pandas
+- numpy
+- lxml
+
+---
+
+## ☁️ Deploy on Streamlit Cloud
+
+1. Push this project to GitHub
+2. Go to [Streamlit Cloud](https://streamlit.io/cloud) and click "New App"
+3. Select your repo and `stock_scanner_app.py`
+4. Click **Deploy**
+
+---
+
+## 🙌 Contributing
+
+Pull requests welcome! Add strategies, UI improvements, or performance enhancements.
+
+---
+
+## 📬 Contact
+
+Created by Jose Reyes  
+📧 joselreyest@gmail.com 
+🔗 [LinkedIn](https://linkedin.com/in/jreyest)
+
+---
+
+## 📝 License
+
+Open source under the [MIT License](LICENSE).
