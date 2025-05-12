@@ -86,7 +86,7 @@ symbols = []
 uploaded_file = None
 
 if market == "S&P 500":
-    symbols = sp500_symbols
+    symbols = sp500
 elif market == "Small Caps":
     symbols = small_caps
 else:
