@@ -74,7 +74,7 @@ def scan_stock(ticker):
         return None
 
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
-symbols = sp500["Symbol"].tolist()
+symbols_500 = sp500["Symbol"].tolist()
 
 small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT", "SOUN"]
 
@@ -86,7 +86,7 @@ symbols = []
 uploaded_file = None
 
 if market == "S&P 500":
-    symbols = sp500
+    symbols = symbols_500
 elif market == "Small Caps":
     symbols = small_caps
 else:
