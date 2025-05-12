@@ -1,9 +1,15 @@
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+with st.sidebar:
+    st.image("logo.png", width=180)
+    st.markdown("**Stock Strategy Scanner**")
+    st.caption("by Jose Reyes")
 st.title("📈 Stock Strategy Scanner")
 
 def scan_stock(ticker):
