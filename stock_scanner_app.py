@@ -119,19 +119,4 @@ if symbols:
             st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
         else:
             st.warning("No stocks matched the criteria.")
-'''
 
-# Write updated code to file
-with open(f"{app_dir}/stock_scanner_app.py", "w") as f:
-    f.write(enhanced_app_code)
-
-# Re-zip the updated project
-final_with_segments_zip_path = "/mnt/data/stock_scanner_app_with_small_caps_upload.zip"
-with zipfile.ZipFile(final_with_segments_zip_path, "w") as zipf:
-    for root, dirs, files in os.walk(app_dir):
-        for file in files:
-            file_path = os.path.join(root, file)
-            arcname = os.path.relpath(file_path, app_dir)
-            zipf.write(file_path, arcname=arcname)
-
-final_with_segments_zip_path
