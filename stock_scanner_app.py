@@ -76,24 +76,62 @@ def scan_stock(ticker):
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 symbols = sp500["Symbol"].tolist()
 
-selected = st.multiselect("Select stocks to scan (or leave empty to scan all)", symbols)
+small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT", "SOUN"]
 
-btn = st.button("🔍 Scan Now")
+st.subheader("Select Market Segment")
 
-if btn:
-    tickers = selected if selected else symbols
-    st.info(f"Scanning {len(tickers)} stocks...")
+market = st.radio("Choose market type", ["S&P 500", "Small Caps", "Upload Custom CSV"])
 
-    results = []
-    for sym in tickers:
-        res = scan_stock(sym)
-        if res:
-            results.append(res)
+symbols = []
+uploaded_file = None
 
-    if results:
-        df = pd.DataFrame(results)
-        st.success(f"Found {len(df)} matches")
-        st.dataframe(df)
-        st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
-    else:
-        st.warning("No stocks matched the criteria.")
+if market == "S&P 500":
+    symbols = sp500_symbols
+elif market == "Small Caps":
+    symbols = small_caps
+else:
+    uploaded_file = st.file_uploader("Upload CSV with one ticker per line")
+    if uploaded_file:
+        try:
+            user_df = pd.read_csv(uploaded_file, header=None)
+            symbols = user_df[0].dropna().unique().tolist()
+        except:
+            st.error("⚠️ Error reading the uploaded file. Make sure it's a CSV with one column of tickers.")
+
+if symbols:
+    selected = st.multiselect("Select stocks to scan (or leave empty to scan all)", symbols)
+    btn = st.button("🔍 Scan Now")
+
+    if btn:
+        tickers = selected if selected else symbols
+        st.info(f"Scanning {len(tickers)} stocks...")
+
+        results = []
+        for sym in tickers:
+            res = scan_stock(sym)
+            if res:
+                results.append(res)
+
+        if results:
+            df = pd.DataFrame(results)
+            st.success(f"Found {len(df)} matches")
+            st.dataframe(df)
+            st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
+        else:
+            st.warning("No stocks matched the criteria.")
+'''
+
+# Write updated code to file
+with open(f"{app_dir}/stock_scanner_app.py", "w") as f:
+    f.write(enhanced_app_code)
+
+# Re-zip the updated project
+final_with_segments_zip_path = "/mnt/data/stock_scanner_app_with_small_caps_upload.zip"
+with zipfile.ZipFile(final_with_segments_zip_path, "w") as zipf:
+    for root, dirs, files in os.walk(app_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            arcname = os.path.relpath(file_path, app_dir)
+            zipf.write(file_path, arcname=arcname)
+
+final_with_segments_zip_path
