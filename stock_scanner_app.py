@@ -4,8 +4,9 @@ import pandas as pd
 import yfinance as yf
 import numpy as np
 
+# ✅ This must come FIRST before any Streamlit UI commands
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
-st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
