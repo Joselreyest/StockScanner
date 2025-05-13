@@ -1,8 +1,10 @@
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
+import plotly.graph_objects as go
+import ta  # technical analysis indicators (like RSI)
+import datetime
 
 # ✅ This must come FIRST before any Streamlit UI commands
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
