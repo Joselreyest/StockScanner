@@ -38,25 +38,32 @@ def scan_stock(ticker):
         rsi = 100 - (100 / (1 + rs))
         latest_rsi = rsi.iloc[-1]
 
+        print(f"{ticker}: RSI={latest_rsi:.2f}, Vol={vol}")
+        
         if pd.isna(latest_rsi) or latest_rsi > 30:
+            print(f"{ticker} excluded: RSI > 30")
             return None
-
+            
         if vol < 1_000_000:
+            print(f"{ticker} excluded: volume < 1M")
             return None
 
-        # Breakout strategy
-        day20_high = data['High'].rolling(window=20).max()
-        if high < day20_high.iloc[-2]:  # not a breakout
+        # Breakout
+        day20_high = data['High'].rolling(20).max()
+        if high < day20_high.iloc[-2]:
+            print(f"{ticker} excluded: not a 20-day breakout")
             return None
 
-        # Volume spike strategy
+        # Volume spike
         avg_vol = data['Volume'].rolling(20).mean()
         if pd.isna(avg_vol.iloc[-2]) or vol <= 2 * avg_vol.iloc[-2]:
+            print(f"{ticker} excluded: no volume spike")
             return None
 
-        # Gap-up strategy
+        # Gap-up
         prev_high = data['High'].iloc[-2]
         if open_ < 1.02 * prev_high:
+            print(f"{ticker} excluded: no gap up")
             return None
 
         return {
