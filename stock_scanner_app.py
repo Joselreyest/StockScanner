@@ -18,6 +18,8 @@ st.title("📈 Stock Strategy Scanner")
 # User-configurable strategy filters
 st.sidebar.header("🔧 Strategy Filters")
 
+debug_mode = st.sidebar.checkbox("✅ Enable Debug Mode")
+
 min_volume = st.sidebar.slider("Minimum Volume", 100_000, 10_000_000, 1_000_000, step=100_000)
 max_rsi = st.sidebar.slider("Max RSI", 10, 70, 30)
 gap_up_pct = st.sidebar.slider("Min Gap % (Open vs Prev High)", 0.5, 10.0, 2.0, step=0.5)
@@ -68,6 +70,8 @@ def scan_stock(ticker):
         data = stock.history(period='1mo', interval='1d')
 
         if data is None or data.empty or len(data) < 21:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ Not enough data")
             return None
 
         latest = data.iloc[-1]
@@ -77,30 +81,44 @@ def scan_stock(ticker):
         open_ = latest['Open']
         vol = latest['Volume']
 
-        # RSI using ta
+# RSI
         data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
         latest_rsi = data['RSI'].iloc[-1]
+
         if pd.isna(latest_rsi) or latest_rsi > max_rsi:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ RSI {latest_rsi:.2f} exceeds threshold")
             return None
 
         if vol < min_volume:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ Volume {vol} below threshold")
             return None
 
         # Breakout logic
         day20_high = data['High'].rolling(window=20).max()
         if high < day20_high.iloc[-2]:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ Not a breakout")
             return None
 
         # Volume spike logic
         avg_vol = data['Volume'].rolling(20).mean()
         if pd.isna(avg_vol.iloc[-2]) or vol <= volume_spike_ratio * avg_vol.iloc[-2]:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ No volume spike")
             return None
 
         # Gap-up logic
         prev_high = data['High'].iloc[-2]
         if open_ < (1 + gap_up_pct / 100) * prev_high:
+            if debug_mode:
+                st.write(f"{ticker}: ❌ No gap-up")
             return None
 
+        if debug_mode:
+            st.write(f"{ticker}: ✅ Passed all filters")
+            
         return {
             "Ticker": ticker,
             "Close": round(close, 2),
@@ -112,7 +130,8 @@ def scan_stock(ticker):
         }
 
     except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
+        if debug_mode:
+            st.write(f"{ticker}: ⚠️ Exception occurred - {e}")
         return None
 
 # UI for stock selection
