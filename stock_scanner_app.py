@@ -10,6 +10,8 @@ from email.message import EmailMessage
 from datetime import datetime
 import json
 import os
+import threading
+import time
 
 # technical analysis indicators
 
@@ -53,8 +55,13 @@ with st.sidebar:
 
     st.subheader("📧 Email Alerts")
     enable_email = st.checkbox("Enable Email Alert")
-    user_email = st.text_input("Your Gmail", placeholder="you@gmail.com")
-    app_password = st.text_input("App Password", type="password")
+    user_email = st.text_input("Your Gmail", placeholder="joselreyest@gmail.com")
+    app_password = st.text_input("kfwn xajx ifeo wxwj", type="password")
+
+    st.subheader("🕒 Scheduled Scan")
+    enable_schedule = st.checkbox("Enable Scheduled Scanning")
+    scheduled_hour = st.slider("Hour (24h)", 0, 23, 9)
+    scheduled_minute = st.slider("Minute", 0, 59, 0)
     
 st.title("📈 Stock Strategy Scanner")
 
@@ -105,56 +112,87 @@ def scan_stock(ticker):
 
         if enable_debug:
             print(f"RSI for {ticker}: {latest_rsi:.2f}")
-            
-        if pd.isna(latest_rsi) or latest_rsi > rsi_threshold:
-            if enable_debug:
-                print(f"RSI too high for {ticker}")            
-            return None
 
-        if vol < volume_threshold:
+        score = 0
+        
+        if not pd.isna(latest_rsi) and latest_rsi <= rsi_threshold:
+            score += 1
+        else:
             if enable_debug:
-                print(f"Volume too low for {ticker}: {vol}")            
-            return None
+                print(f"RSI too high for {ticker}")
+            if not score_mode:
+                return None
+                
+        if vol >= volume_threshold:
+            score += 1
+        else:
+            if enable_debug:
+                print(f"Volume too low for {ticker}: {vol}")
+            if not score_mode:
+                return None
 
         day20_high = data['High'].rolling(window=20).max()
-        if high < day20_high.iloc[-2]:
+        if high >= day20_high.iloc[-2]:
+            score += 1
+        else:
             if enable_debug:
-                print(f"No breakout for {ticker}")            
-            return None
+                print(f"No breakout for {ticker}")
+            if not score_mode:
+                return None
 
         avg_vol = data['Volume'].rolling(20).mean()
-        if pd.isna(avg_vol.iloc[-2]) or vol <= volume_spike_factor * avg_vol.iloc[-2]:
-            if enable_debug:
-                print(f"No volume spike for {ticker}")            
-            return None
+        if high >= day20_high.iloc[-2]:
 
         prev_high = data['High'].iloc[-2]
-        if open_ < (1 + gap_percent / 100) * prev_high:
+        if open_ >= (1 + gap_percent / 100) * prev_high:
+            score += 1
+        else:
             if enable_debug:
-                print(f"No gap up for {ticker}")            
-            return None
-
+                print(f"No gap up for {ticker}")
+            if not score_mode:
+                return None
+                
         if enable_debug:
-            print(f"✅ {ticker} matched all criteria")
+            print(f"✅ {ticker} matched with score {score}/5")
             
         return {
             "Ticker": ticker,
             "Close": round(close, 2),
             "Volume": int(vol),
             "RSI": round(latest_rsi, 2),
-            "Breakout": True,
-            "Volume Spike": True,
-            "Gap Up": True,
+            "Score": score,
             "Chart": data[-30:].copy()
         }
 
     except Exception as e:
         if enable_debug:
-            print(f"Error fetching {ticker}: {e}")            
+            print(f"Error fetching {ticker}: {e}")
             st.error(f"Error fetching {ticker}: {e}")
         return None
-        
-# Load tickers
+
+def run_scan(tickers):
+    results = []
+    charts = {}
+    for sym in tickers:
+        res = scan_stock(sym)
+        if res:
+            charts[sym] = res.pop("Chart")
+            results.append(res)
+    return results, charts
+
+def scheduler():
+    while True:
+        now = datetime.now()
+        if now.time().hour == scheduled_hour and now.time().minute == scheduled_minute:
+            print("⏰ Scheduled scan triggered")
+            tickers = selected if selected else symbols
+            results, charts = run_scan(tickers)
+            if results and enable_email and user_email and app_password:
+                df = pd.DataFrame(results)
+                send_email_alert(df, user_email, app_password)
+            time.sleep(60)  # prevent multiple triggers within the same minute
+        time.sleep(10)
+
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 sp500["Sector"] = sp500["GICS Sector"]
 sp500["Industry"] = sp500["GICS Sub-Industry"]
@@ -194,14 +232,7 @@ if symbols:
     if btn:
         tickers = selected if selected else symbols
         st.info(f"Scanning {len(tickers)} stocks...")
-
-        results = []
-        charts = {}
-        for sym in tickers:
-            res = scan_stock(sym)
-            if res:
-                charts[sym] = res.pop("Chart")
-                results.append(res)
+        results, charts = run_scan(tickers)
 
         if results:
             df = pd.DataFrame(results)
@@ -229,3 +260,6 @@ if symbols:
                 st.success("✅ Email alert sent!")
         else:
             st.warning("No stocks matched the criteria.")
+
+if enable_schedule:
+    threading.Thread(target=scheduler, daemon=True).start()
