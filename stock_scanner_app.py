@@ -25,6 +25,14 @@ if "debug_log" not in st.session_state:
 PRESETS_DIR = "presets"
 os.makedirs(PRESETS_DIR, exist_ok=True)
 
+@st.cache_data
+
+def load_sp500_metadata():
+    table = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    return table[['Symbol', 'Security', 'GICS Sector', 'GICS Sub-Industry']]
+
+sp500_df = load_sp500_metadata()
+
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
@@ -52,8 +60,9 @@ with st.sidebar:
         weight_rsi = weight_volume = weight_breakout = weight_spike = weight_gap = 1
         min_score = 0
 
-    st.subheader("📊 Sector Filter")
-    sector_filter = st.text_input("Only include tickers with sector (optional)", placeholder="e.g. Technology")
+    st.subheader("📊 Sector/Industry Filter")
+    selected_sector = st.selectbox("Filter by Sector (S&P 500 only)", ["All"] + sorted(sp500_df['GICS Sector'].unique()))
+    selected_industry = st.selectbox("Filter by Industry (S&P 500 only)", ["All"] + sorted(sp500_df['GICS Sub-Industry'].unique()))
 
     st.subheader("💾 Presets")
     preset_name = st.text_input("Preset Name")
@@ -118,8 +127,13 @@ def scan_stock(ticker):
         stock = yf.Ticker(ticker)
         info = stock.info
         sector = info.get("sector", "Unknown")
-        if sector_filter and sector_filter.lower() not in sector.lower():
+        industry = info.get("industry", "Unknown")
+
+        if selected_sector != "All" and sector != selected_sector:
             log_debug(f"Filtered by sector: {sector}")
+            return None
+        if selected_industry != "All" and industry != selected_industry:
+            log_debug(f"Filtered by industry: {industry}")
             return None
 
         data = stock.history(period='1mo', interval='1d')
@@ -203,6 +217,7 @@ def scan_stock(ticker):
         st.error(f"Error fetching {ticker}: {e}")
         return None
 
+
 def run_scan(tickers):
     st.session_state.debug_log = []
     results = []
@@ -215,6 +230,7 @@ def run_scan(tickers):
                 results.append(res)
     st.session_state.scan_results = results
     st.session_state.scan_charts = charts
+
 
 def display_results():
     if st.session_state.scan_results:
@@ -251,9 +267,18 @@ def display_results():
         with st.expander("🛠 Debug Log"):
             st.code("\n".join(st.session_state.debug_log))
 
-# Example tickers (You would replace or add source for these in real app)
+# Apply sector/industry filter to tickers
+
 tickers_input = st.text_area("Enter tickers to scan (comma separated)", "AAPL,MSFT,GOOGL,NVDA")
 tickers = [x.strip().upper() for x in tickers_input.split(",") if x.strip()]
+
+if selected_sector != "All" or selected_industry != "All":
+    sp500_filtered = sp500_df
+    if selected_sector != "All":
+        sp500_filtered = sp500_filtered[sp500_filtered['GICS Sector'] == selected_sector]
+    if selected_industry != "All":
+        sp500_filtered = sp500_filtered[sp500_filtered['GICS Sub-Industry'] == selected_industry]
+    tickers = list(sp500_filtered['Symbol'].unique())
 
 if st.button("🔍 Scan Now"):
     st.info(f"Scanning {len(tickers)} stocks...")
