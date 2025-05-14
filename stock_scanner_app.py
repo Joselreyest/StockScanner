@@ -53,7 +53,7 @@ with st.sidebar:
     st.subheader("📧 Email Alerts")
     enable_email = st.checkbox("Enable Email Alert")
     user_email = st.text_input("Your Gmail", placeholder="joselreyest@gmail.com")
-    app_password = st.text_input("App Password", type="kfwn xajx ifeo wxwj")
+    app_password = st.text_input("App Password", type="password")
     
 st.title("📈 Stock Strategy Scanner")
 
