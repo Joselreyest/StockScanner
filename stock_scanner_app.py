@@ -1,9 +1,13 @@
+# stock_scanner_app_phase2.py
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
-import plotly.graph_objects as go
-import ta  # technical analysis indicators
+import plotly.graph_objects as go 
+from ta.momentum import RSIIndicator
+import datetime
+
+# technical analysis indicators
 
 # Set page config
 # ✅ This must come FIRST before any Streamlit UI commands
@@ -15,6 +19,8 @@ with st.sidebar:
     st.markdown("**Stock Strategy Scanner**")
     st.caption("by Jose Reyes")
     debug_mode = st.checkbox("✅ Enable Debug Mode")
+    email_alerts_enabled = st.checkbox("📬 Enable Email Alerts")
+    scheduled_run_enabled = st.checkbox("⏰ Enable Scheduled Scan")
     
 st.title("📈 Stock Strategy Scanner")
 
@@ -168,6 +174,10 @@ if symbols:
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
-
+            if email_alerts_enabled:
+                st.info("📧 Email alerts are enabled. Integration pending.")
+            if scheduled_run_enabled:
+                st.info("⏰ Scheduled scanning is enabled. Integration pending.")
+                
         else:
             st.warning("No stocks matched the criteria.")
