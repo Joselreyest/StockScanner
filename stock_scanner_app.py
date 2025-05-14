@@ -24,6 +24,12 @@ if "debug_log" not in st.session_state:
     st.session_state.debug_log = []
 if "last_selected_symbol" not in st.session_state:
     st.session_state.last_selected_symbol = None
+if "custom_tickers" not in st.session_state:
+    st.session_state.custom_tickers = []
+if "selected_sector" not in st.session_state:
+    st.session_state.selected_sector = "All"
+if "selected_industry" not in st.session_state:
+    st.session_state.selected_industry = "All"
 
 PRESETS_DIR = "presets"
 os.makedirs(PRESETS_DIR, exist_ok=True)
@@ -35,6 +41,9 @@ def load_sp500_metadata():
     return table[['Symbol', 'Security', 'GICS Sector', 'GICS Sub-Industry']]
 
 sp500_df = load_sp500_metadata()
+
+sectors = ["All"] + sorted(sp500_df['GICS Sector'].dropna().unique().tolist())
+industries = ["All"] + sorted(sp500_df['GICS Sub-Industry'].dropna().unique().tolist())
 
 def log_debug(msg):
     if st.session_state.get("enable_debug"):
@@ -171,18 +180,22 @@ with st.sidebar:
         st.session_state.weight_rsi = st.session_state.weight_volume = st.session_state.weight_breakout = st.session_state.weight_spike = st.session_state.weight_gap = 1
         st.session_state.min_score = 0
 
+    st.session_state.selected_sector = st.selectbox("Sector Filter", sectors)
+    filtered_industries = ["All"] + sorted(sp500_df[sp500_df['GICS Sector'] == st.session_state.selected_sector]['GICS Sub-Industry'].dropna().unique().tolist()) if st.session_state.selected_sector != "All" else industries
+    st.session_state.selected_industry = st.selectbox("Industry Filter", filtered_industries)
+
 st.title("📈 Stock Strategy Scanner")
 
 def run_scan_button():
     if st.button("🔍 Run Scan"):
-        if 'custom_tickers' in st.session_state and st.session_state.custom_tickers:
+        if st.session_state.custom_tickers:
             tickers = st.session_state.custom_tickers
         else:
             tickers = sp500_df['Symbol'].tolist()
 
-        if 'selected_sector' in st.session_state and st.session_state.selected_sector != "All":
+        if st.session_state.selected_sector != "All":
             tickers = sp500_df[sp500_df['GICS Sector'] == st.session_state.selected_sector]['Symbol'].tolist()
-        if 'selected_industry' in st.session_state and st.session_state.selected_industry != "All":
+        if st.session_state.selected_industry != "All":
             tickers = sp500_df[sp500_df['GICS Sub-Industry'] == st.session_state.selected_industry]['Symbol'].tolist()
 
         run_scan(tickers)
