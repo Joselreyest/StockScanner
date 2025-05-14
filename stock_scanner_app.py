@@ -13,6 +13,13 @@ import time
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
+if "scan_results" not in st.session_state:
+    st.session_state.scan_results = []
+if "scan_charts" not in st.session_state:
+    st.session_state.scan_charts = {}
+if "selected_symbol" not in st.session_state:
+    st.session_state.selected_symbol = None
+
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
@@ -35,8 +42,10 @@ with st.sidebar:
         weight_breakout = st.slider("Weight: Breakout Match", 0, 5, 1)
         weight_spike = st.slider("Weight: Volume Spike", 0, 5, 1)
         weight_gap = st.slider("Weight: Gap-up Match", 0, 5, 1)
+        min_score = st.slider("Minimum Score to Show", 0, 25, 3)
     else:
         weight_rsi = weight_volume = weight_breakout = weight_spike = weight_gap = 1
+        min_score = 0
 
     if st.button("💾 Save Preset"):
         preset = {
@@ -185,99 +194,42 @@ def run_scan(tickers):
     for sym in tickers:
         res = scan_stock(sym)
         if res:
-            charts[sym] = res.pop("Chart")
-            results.append(res)
-    return results, charts
+            if not score_mode or res["Score"] >= min_score:
+                charts[sym] = res.pop("Chart")
+                results.append(res)
+    st.session_state.scan_results = results
+    st.session_state.scan_charts = charts
 
-def scheduler():
-    while True:
-        now = datetime.now()
-        if now.time().hour == scheduled_hour and now.time().minute == scheduled_minute:
-            print("⏰ Scheduled scan triggered")
-            tickers = selected if selected else symbols
-            results, charts = run_scan(tickers)
-            if results and enable_email and user_email and app_password:
-                df = pd.DataFrame(results)
-                send_email_alert(df, user_email, app_password)
-            time.sleep(60)  # prevent multiple triggers within the same minute
-        time.sleep(10)
+def display_results():
+    if st.session_state.scan_results:
+        df = pd.DataFrame(st.session_state.scan_results)
+        st.success(f"Found {len(df)} matches")
+        st.dataframe(df)
 
-sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
-sp500["Sector"] = sp500["GICS Sector"]
-sp500["Industry"] = sp500["GICS Sub-Industry"]
-symbols_500 = sp500["Symbol"].tolist()
+        selected_symbol = st.selectbox("📊 Select stock to view chart", df["Ticker"].tolist(),
+                                       index=0 if st.session_state.selected_symbol is None else df["Ticker"].tolist().index(st.session_state.selected_symbol))
+        st.session_state.selected_symbol = selected_symbol
 
-small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT", "SOUN"]
+        if selected_symbol and selected_symbol in st.session_state.scan_charts:
+            chart_data = st.session_state.scan_charts[selected_symbol]
+            fig = go.Figure(data=[
+                go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
+                               low=chart_data['Low'], close=chart_data['Close'])
+            ])
+            fig.update_layout(title=f"{selected_symbol} - Last 30 Days", xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("Select Market Segment")
-market = st.radio("Choose market type", ["S&P 500", "Small Caps", "Upload Custom CSV"])
+        st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
+    else:
+        st.warning("No stocks matched the criteria.")
 
-symbols = []
-uploaded_file = None
-if market == "S&P 500":
-    sectors = st.multiselect("Filter by Sector", sp500["Sector"].unique())
-    industries = st.multiselect("Filter by Industry", sp500["Industry"].unique())
-    filtered = sp500
-    if sectors:
-        filtered = filtered[filtered["Sector"].isin(sectors)]
-    if industries:
-        filtered = filtered[filtered["Industry"].isin(industries)]
-    symbols = filtered["Symbol"].tolist()
-elif market == "Small Caps":
-    symbols = small_caps
-else:
-    uploaded_file = st.file_uploader("Upload CSV with one ticker per line")
-    if uploaded_file:
-        try:
-            user_df = pd.read_csv(uploaded_file, header=None)
-            symbols = user_df[0].dropna().unique().tolist()
-        except:
-            st.error("⚠️ Error reading the uploaded file. Make sure it's a CSV with one column of tickers.")
+# Example tickers (You would replace or add source for these in real app)
+tickers_input = st.text_area("Enter tickers to scan (comma separated)", "AAPL,MSFT,GOOGL,NVDA")
+tickers = [x.strip().upper() for x in tickers_input.split(",") if x.strip()]
 
-if symbols:
-    selected = st.multiselect("Select stocks to scan (or leave empty to scan all)", symbols)
-    btn = st.button("🔍 Scan Now")
+if st.button("🔍 Scan Now"):
+    st.info(f"Scanning {len(tickers)} stocks...")
+    run_scan(tickers)
 
-    if btn:
-        tickers = selected if selected else symbols
-        st.info(f"Scanning {len(tickers)} stocks...")
-        results, charts = run_scan(tickers)
-
-        if results:
-            df = pd.DataFrame(results)
-            st.session_state["scan_df"] = df
-            st.session_state["charts"] = charts
-            st.session_state["scan_done"] = True
-            st.success(f"Found {len(df)} matches")
-        else:
-            st.warning("No stocks matched the criteria.")
-            st.session_state["scan_done"] = False
-
-if st.session_state.get("scan_done"):
-    df = st.session_state["scan_df"]
-    charts = st.session_state["charts"]
-
-    st.dataframe(df)
-    st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
-
-    chart_ticker = st.selectbox("📊 View Chart for", df["Ticker"].tolist(), key="chart_select")
-    if chart_ticker in charts:
-        chart_data = charts[chart_ticker]
-        fig = go.Figure(data=[
-            go.Candlestick(
-                x=chart_data.index,
-                open=chart_data['Open'],
-                high=chart_data['High'],
-                low=chart_data['Low'],
-                close=chart_data['Close']
-            )
-        ])
-        fig.update_layout(title=f"Candlestick Chart: {chart_ticker}", xaxis_title="Date", yaxis_title="Price")
-        st.plotly_chart(fig, use_container_width=True)
-
-    if enable_email and user_email and app_password and btn:
-        send_email_alert(df, user_email, app_password)
-        st.success("✅ Email alert sent!")
-
-if enable_schedule:
-    threading.Thread(target=scheduler, daemon=True).start()
+if st.session_state.scan_results:
+    display_results()
