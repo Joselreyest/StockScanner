@@ -74,7 +74,7 @@ def send_email_alert(matches, user_email, app_password):
 
 # Scanning function
 def scan_stock(ticker):
- try:
+    try:
         stock = yf.Ticker(ticker)
         data = stock.history(period='1mo', interval='1d')
 
