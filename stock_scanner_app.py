@@ -1,5 +1,3 @@
-# stock_scanner_app_phase6.py
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -7,19 +5,14 @@ import numpy as np
 import plotly.graph_objects as go
 import smtplib, ssl
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, time as dt_time
 import json
 import os
 import threading
 import time
 
-# technical analysis indicators
-
-# Set page config
-# ✅ This must come FIRST before any Streamlit UI commands
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
-# Sidebar
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
@@ -62,7 +55,7 @@ with st.sidebar:
     enable_schedule = st.checkbox("Enable Scheduled Scanning")
     scheduled_hour = st.slider("Hour (24h)", 0, 23, 9)
     scheduled_minute = st.slider("Minute", 0, 59, 0)
-    
+
 st.title("📈 Stock Strategy Scanner")
 
 def send_email_alert(matches, user_email, app_password):
@@ -80,18 +73,17 @@ def send_email_alert(matches, user_email, app_password):
         smtp.login(user_email, app_password)
         smtp.send_message(msg)
 
-# Scanning function
 def scan_stock(ticker):
     try:
         if enable_debug:
             print(f"\n--- Scanning {ticker} ---")
-        
+
         stock = yf.Ticker(ticker)
         data = stock.history(period='1mo', interval='1d')
 
         if data is None or data.empty or len(data) < 21:
             if enable_debug:
-                print(f"Not enough data for {ticker}")            
+                print(f"Not enough data for {ticker}")
             return None
 
         latest = data.iloc[-1]
@@ -114,7 +106,7 @@ def scan_stock(ticker):
             print(f"RSI for {ticker}: {latest_rsi:.2f}")
 
         score = 0
-        
+
         if not pd.isna(latest_rsi) and latest_rsi <= rsi_threshold:
             score += 1
         else:
@@ -122,7 +114,7 @@ def scan_stock(ticker):
                 print(f"RSI too high for {ticker}")
             if not score_mode:
                 return None
-                
+
         if vol >= volume_threshold:
             score += 1
         else:
@@ -141,7 +133,13 @@ def scan_stock(ticker):
                 return None
 
         avg_vol = data['Volume'].rolling(20).mean()
-        if high >= day20_high.iloc[-2]:
+        if not pd.isna(avg_vol.iloc[-2]) and vol > volume_spike_factor * avg_vol.iloc[-2]:
+            score += 1
+        else:
+            if enable_debug:
+                print(f"No volume spike for {ticker}")
+            if not score_mode:
+                return None
 
         prev_high = data['High'].iloc[-2]
         if open_ >= (1 + gap_percent / 100) * prev_high:
@@ -151,10 +149,10 @@ def scan_stock(ticker):
                 print(f"No gap up for {ticker}")
             if not score_mode:
                 return None
-                
+
         if enable_debug:
             print(f"✅ {ticker} matched with score {score}/5")
-            
+
         return {
             "Ticker": ticker,
             "Close": round(close, 2),
