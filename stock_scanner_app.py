@@ -36,11 +36,6 @@ def load_sp500_metadata():
 
 sp500_df = load_sp500_metadata()
 
-def run_scan_button():
-    if st.button("🔍 Run Scan"):
-        tickers = sp500_df['Symbol'].tolist()
-        run_scan(tickers)
-
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
@@ -71,6 +66,17 @@ with st.sidebar:
     st.subheader("📊 Sector/Industry Filter")
     selected_sector = st.selectbox("Filter by Sector (S&P 500 only)", ["All"] + sorted(sp500_df['GICS Sector'].unique()))
     selected_industry = st.selectbox("Filter by Industry (S&P 500 only)", ["All"] + sorted(sp500_df['GICS Sub-Industry'].unique()))
+
+    st.subheader("📄 Load Symbols from File")
+    uploaded_file = st.file_uploader("Upload CSV with Ticker Symbols", type=["csv"])
+    custom_tickers = []
+    if uploaded_file:
+        try:
+            df_uploaded = pd.read_csv(uploaded_file, header=None)
+            custom_tickers = df_uploaded.iloc[:, 0].dropna().unique().tolist()
+            st.success(f"Loaded {len(custom_tickers)} symbols from file")
+        except Exception as e:
+            st.error("Failed to read file. Ensure it is a single-column CSV with tickers.")
 
     st.subheader("💾 Presets")
     preset_name = st.text_input("Preset Name")
@@ -111,12 +117,26 @@ with st.sidebar:
             while True:
                 now = datetime.now()
                 if now.hour == scheduled_hour and now.minute == scheduled_minute:
-                    tickers = sp500_df['Symbol'].tolist()
+                    tickers = custom_tickers if custom_tickers else sp500_df['Symbol'].tolist()
                     run_scan(tickers)
                     time.sleep(60)
                 time.sleep(5)
 
         threading.Thread(target=schedule_loop, daemon=True).start()
+
+def run_scan_button():
+    if st.button("🔍 Run Scan"):
+        if custom_tickers:
+            tickers = custom_tickers
+        else:
+            tickers = sp500_df['Symbol'].tolist()
+
+        if selected_sector != "All":
+            tickers = sp500_df[sp500_df['GICS Sector'] == selected_sector]['Symbol'].tolist()
+        if selected_industry != "All":
+            tickers = sp500_df[sp500_df['GICS Sub-Industry'] == selected_industry]['Symbol'].tolist()
+
+        run_scan(tickers)
 
 st.title("📈 Stock Strategy Scanner")
 run_scan_button()
