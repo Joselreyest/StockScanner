@@ -19,6 +19,11 @@ if "scan_charts" not in st.session_state:
     st.session_state.scan_charts = {}
 if "selected_symbol" not in st.session_state:
     st.session_state.selected_symbol = None
+if "debug_log" not in st.session_state:
+    st.session_state.debug_log = []
+
+PRESETS_DIR = "presets"
+os.makedirs(PRESETS_DIR, exist_ok=True)
 
 with st.sidebar:
     st.image("logo.png", width=180)
@@ -47,24 +52,32 @@ with st.sidebar:
         weight_rsi = weight_volume = weight_breakout = weight_spike = weight_gap = 1
         min_score = 0
 
-    if st.button("💾 Save Preset"):
+    st.subheader("📊 Sector Filter")
+    sector_filter = st.text_input("Only include tickers with sector (optional)", placeholder="e.g. Technology")
+
+    st.subheader("💾 Presets")
+    preset_name = st.text_input("Preset Name")
+    if st.button("Save Preset") and preset_name:
         preset = {
             "rsi": rsi_threshold,
             "volume": volume_threshold,
             "gap": gap_percent,
             "spike": volume_spike_factor
         }
-        with open("preset.json", "w") as f:
+        with open(os.path.join(PRESETS_DIR, f"{preset_name}.json"), "w") as f:
             json.dump(preset, f)
-        st.success("Preset saved.")
-    if st.button("📂 Load Preset") and os.path.exists("preset.json"):
-        with open("preset.json", "r") as f:
+        st.success(f"Preset '{preset_name}' saved.")
+
+    preset_files = [f.replace(".json", "") for f in os.listdir(PRESETS_DIR) if f.endswith(".json")]
+    selected_preset = st.selectbox("Load Preset", ["--Select--"] + preset_files)
+    if selected_preset != "--Select--":
+        with open(os.path.join(PRESETS_DIR, f"{selected_preset}.json"), "r") as f:
             preset = json.load(f)
             rsi_threshold = preset.get("rsi", rsi_threshold)
             volume_threshold = preset.get("volume", volume_threshold)
             gap_percent = preset.get("gap", gap_percent)
             volume_spike_factor = preset.get("spike", volume_spike_factor)
-        st.success("Preset loaded.")
+        st.success(f"Preset '{selected_preset}' loaded.")
 
     st.subheader("📧 Email Alerts")
     enable_email = st.checkbox("Enable Email Alert")
@@ -93,17 +106,26 @@ def send_email_alert(matches, user_email, app_password):
         smtp.login(user_email, app_password)
         smtp.send_message(msg)
 
+def log_debug(message):
+    if enable_debug:
+        st.session_state.debug_log.append(message)
+        print(message)
+
 def scan_stock(ticker):
     try:
-        if enable_debug:
-            print(f"\n--- Scanning {ticker} ---")
+        log_debug(f"\n--- Scanning {ticker} ---")
 
         stock = yf.Ticker(ticker)
+        info = stock.info
+        sector = info.get("sector", "Unknown")
+        if sector_filter and sector_filter.lower() not in sector.lower():
+            log_debug(f"Filtered by sector: {sector}")
+            return None
+
         data = stock.history(period='1mo', interval='1d')
 
         if data is None or data.empty or len(data) < 21:
-            if enable_debug:
-                print(f"Not enough data for {ticker}")
+            log_debug(f"Not enough data for {ticker}")
             return None
 
         latest = data.iloc[-1]
@@ -122,24 +144,21 @@ def scan_stock(ticker):
         rsi = 100 - (100 / (1 + rs))
         latest_rsi = rsi.iloc[-1]
 
-        if enable_debug:
-            print(f"RSI for {ticker}: {latest_rsi:.2f}")
+        log_debug(f"RSI for {ticker}: {latest_rsi:.2f}")
 
         score = 0
 
         if not pd.isna(latest_rsi) and latest_rsi <= rsi_threshold:
             score += weight_rsi
         else:
-            if enable_debug:
-                print(f"RSI too high for {ticker}")
+            log_debug(f"RSI too high for {ticker}")
             if not score_mode:
                 return None
 
         if vol >= volume_threshold:
             score += weight_volume
         else:
-            if enable_debug:
-                print(f"Volume too low for {ticker}: {vol}")
+            log_debug(f"Volume too low for {ticker}: {vol}")
             if not score_mode:
                 return None
 
@@ -147,8 +166,7 @@ def scan_stock(ticker):
         if high >= day20_high.iloc[-2]:
             score += weight_breakout
         else:
-            if enable_debug:
-                print(f"No breakout for {ticker}")
+            log_debug(f"No breakout for {ticker}")
             if not score_mode:
                 return None
 
@@ -156,8 +174,7 @@ def scan_stock(ticker):
         if not pd.isna(avg_vol.iloc[-2]) and vol > volume_spike_factor * avg_vol.iloc[-2]:
             score += weight_spike
         else:
-            if enable_debug:
-                print(f"No volume spike for {ticker}")
+            log_debug(f"No volume spike for {ticker}")
             if not score_mode:
                 return None
 
@@ -165,13 +182,11 @@ def scan_stock(ticker):
         if open_ >= (1 + gap_percent / 100) * prev_high:
             score += weight_gap
         else:
-            if enable_debug:
-                print(f"No gap up for {ticker}")
+            log_debug(f"No gap up for {ticker}")
             if not score_mode:
                 return None
 
-        if enable_debug:
-            print(f"✅ {ticker} matched with score {score}/25")
+        log_debug(f"✅ {ticker} matched with score {score}/25")
 
         return {
             "Ticker": ticker,
@@ -179,16 +194,17 @@ def scan_stock(ticker):
             "Volume": int(vol),
             "RSI": round(latest_rsi, 2),
             "Score": score,
+            "Sector": sector,
             "Chart": data[-30:].copy()
         }
 
     except Exception as e:
-        if enable_debug:
-            print(f"Error fetching {ticker}: {e}")
-            st.error(f"Error fetching {ticker}: {e}")
+        log_debug(f"Error fetching {ticker}: {e}")
+        st.error(f"Error fetching {ticker}: {e}")
         return None
 
 def run_scan(tickers):
+    st.session_state.debug_log = []
     results = []
     charts = {}
     for sym in tickers:
@@ -203,6 +219,14 @@ def run_scan(tickers):
 def display_results():
     if st.session_state.scan_results:
         df = pd.DataFrame(st.session_state.scan_results)
+
+        with st.expander("📊 Table Options"):
+            sort_col = st.selectbox("Sort by", ["Score", "RSI", "Volume"])
+            sort_asc = st.checkbox("Ascending", value=False)
+            df = df.sort_values(by=sort_col, ascending=sort_asc)
+            if st.checkbox("Only RSI < 30"):
+                df = df[df["RSI"] < 30]
+
         st.success(f"Found {len(df)} matches")
         st.dataframe(df)
 
@@ -222,6 +246,10 @@ def display_results():
         st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
     else:
         st.warning("No stocks matched the criteria.")
+
+    if enable_debug and st.session_state.debug_log:
+        with st.expander("🛠 Debug Log"):
+            st.code("\n".join(st.session_state.debug_log))
 
 # Example tickers (You would replace or add source for these in real app)
 tickers_input = st.text_area("Enter tickers to scan (comma separated)", "AAPL,MSFT,GOOGL,NVDA")
