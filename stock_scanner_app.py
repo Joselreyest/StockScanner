@@ -1,4 +1,5 @@
 # stock_scanner_app_phase5.py
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -75,10 +76,15 @@ def send_email_alert(matches, user_email, app_password):
 # Scanning function
 def scan_stock(ticker):
     try:
+        if enable_debug:
+            print(f"\n--- Scanning {ticker} ---")
+        
         stock = yf.Ticker(ticker)
         data = stock.history(period='1mo', interval='1d')
 
         if data is None or data.empty or len(data) < 21:
+            if enable_debug:
+                print(f"Not enough data for {ticker}")            
             return None
 
         latest = data.iloc[-1]
@@ -97,24 +103,40 @@ def scan_stock(ticker):
         rsi = 100 - (100 / (1 + rs))
         latest_rsi = rsi.iloc[-1]
 
+        if enable_debug:
+            print(f"RSI for {ticker}: {latest_rsi:.2f}")
+            
         if pd.isna(latest_rsi) or latest_rsi > rsi_threshold:
+            if enable_debug:
+                print(f"RSI too high for {ticker}")            
             return None
 
         if vol < volume_threshold:
+            if enable_debug:
+                print(f"Volume too low for {ticker}: {vol}")            
             return None
 
         day20_high = data['High'].rolling(window=20).max()
         if high < day20_high.iloc[-2]:
+            if enable_debug:
+                print(f"No breakout for {ticker}")            
             return None
 
         avg_vol = data['Volume'].rolling(20).mean()
         if pd.isna(avg_vol.iloc[-2]) or vol <= volume_spike_factor * avg_vol.iloc[-2]:
+            if enable_debug:
+                print(f"No volume spike for {ticker}")            
             return None
 
         prev_high = data['High'].iloc[-2]
         if open_ < (1 + gap_percent / 100) * prev_high:
+            if enable_debug:
+                print(f"No gap up for {ticker}")            
             return None
 
+        if enable_debug:
+            print(f"✅ {ticker} matched all criteria")
+            
         return {
             "Ticker": ticker,
             "Close": round(close, 2),
@@ -127,6 +149,7 @@ def scan_stock(ticker):
 
     except Exception as e:
         if enable_debug:
+            print(f"Error fetching {ticker}: {e}")            
             st.error(f"Error fetching {ticker}: {e}")
         return None
         
