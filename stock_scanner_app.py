@@ -27,6 +27,17 @@ with st.sidebar:
     st.subheader("Advanced")
     enable_debug = st.checkbox("✅ Debug Mode")
     score_mode = st.checkbox("Enable Scoring Mode")
+
+    if score_mode:
+        st.subheader("⚖️ Scoring Weights")
+        weight_rsi = st.slider("Weight: RSI Match", 0, 5, 1)
+        weight_volume = st.slider("Weight: Volume Match", 0, 5, 1)
+        weight_breakout = st.slider("Weight: Breakout Match", 0, 5, 1)
+        weight_spike = st.slider("Weight: Volume Spike", 0, 5, 1)
+        weight_gap = st.slider("Weight: Gap-up Match", 0, 5, 1)
+    else:
+        weight_rsi = weight_volume = weight_breakout = weight_spike = weight_gap = 1
+
     if st.button("💾 Save Preset"):
         preset = {
             "rsi": rsi_threshold,
@@ -48,8 +59,8 @@ with st.sidebar:
 
     st.subheader("📧 Email Alerts")
     enable_email = st.checkbox("Enable Email Alert")
-    user_email = st.text_input("Your Gmail", placeholder="joselreyest@gmail.com")
-    app_password = st.text_input("kfwn xajx ifeo wxwj", type="password")
+    user_email = st.text_input("Your Gmail", placeholder="you@gmail.com")
+    app_password = st.text_input("App Password", type="password")
 
     st.subheader("🕒 Scheduled Scan")
     enable_schedule = st.checkbox("Enable Scheduled Scanning")
@@ -108,7 +119,7 @@ def scan_stock(ticker):
         score = 0
 
         if not pd.isna(latest_rsi) and latest_rsi <= rsi_threshold:
-            score += 1
+            score += weight_rsi
         else:
             if enable_debug:
                 print(f"RSI too high for {ticker}")
@@ -116,7 +127,7 @@ def scan_stock(ticker):
                 return None
 
         if vol >= volume_threshold:
-            score += 1
+            score += weight_volume
         else:
             if enable_debug:
                 print(f"Volume too low for {ticker}: {vol}")
@@ -125,7 +136,7 @@ def scan_stock(ticker):
 
         day20_high = data['High'].rolling(window=20).max()
         if high >= day20_high.iloc[-2]:
-            score += 1
+            score += weight_breakout
         else:
             if enable_debug:
                 print(f"No breakout for {ticker}")
@@ -134,7 +145,7 @@ def scan_stock(ticker):
 
         avg_vol = data['Volume'].rolling(20).mean()
         if not pd.isna(avg_vol.iloc[-2]) and vol > volume_spike_factor * avg_vol.iloc[-2]:
-            score += 1
+            score += weight_spike
         else:
             if enable_debug:
                 print(f"No volume spike for {ticker}")
@@ -143,7 +154,7 @@ def scan_stock(ticker):
 
         prev_high = data['High'].iloc[-2]
         if open_ >= (1 + gap_percent / 100) * prev_high:
-            score += 1
+            score += weight_gap
         else:
             if enable_debug:
                 print(f"No gap up for {ticker}")
@@ -151,7 +162,7 @@ def scan_stock(ticker):
                 return None
 
         if enable_debug:
-            print(f"✅ {ticker} matched with score {score}/5")
+            print(f"✅ {ticker} matched with score {score}/25")
 
         return {
             "Ticker": ticker,
@@ -234,30 +245,39 @@ if symbols:
 
         if results:
             df = pd.DataFrame(results)
+            st.session_state["scan_df"] = df
+            st.session_state["charts"] = charts
+            st.session_state["scan_done"] = True
             st.success(f"Found {len(df)} matches")
-            st.dataframe(df)
-            st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
-
-            chart_ticker = st.selectbox("📊 View Chart for", df["Ticker"].tolist())
-            if chart_ticker in charts:
-                chart_data = charts[chart_ticker]
-                fig = go.Figure(data=[
-                    go.Candlestick(
-                        x=chart_data.index,
-                        open=chart_data['Open'],
-                        high=chart_data['High'],
-                        low=chart_data['Low'],
-                        close=chart_data['Close']
-                    )
-                ])
-                fig.update_layout(title=f"Candlestick Chart: {chart_ticker}", xaxis_title="Date", yaxis_title="Price")
-                st.plotly_chart(fig, use_container_width=True)
-
-            if enable_email and user_email and app_password:
-                send_email_alert(df, user_email, app_password)
-                st.success("✅ Email alert sent!")
         else:
             st.warning("No stocks matched the criteria.")
+            st.session_state["scan_done"] = False
+
+if st.session_state.get("scan_done"):
+    df = st.session_state["scan_df"]
+    charts = st.session_state["charts"]
+
+    st.dataframe(df)
+    st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
+
+    chart_ticker = st.selectbox("📊 View Chart for", df["Ticker"].tolist(), key="chart_select")
+    if chart_ticker in charts:
+        chart_data = charts[chart_ticker]
+        fig = go.Figure(data=[
+            go.Candlestick(
+                x=chart_data.index,
+                open=chart_data['Open'],
+                high=chart_data['High'],
+                low=chart_data['Low'],
+                close=chart_data['Close']
+            )
+        ])
+        fig.update_layout(title=f"Candlestick Chart: {chart_ticker}", xaxis_title="Date", yaxis_title="Price")
+        st.plotly_chart(fig, use_container_width=True)
+
+    if enable_email and user_email and app_password and btn:
+        send_email_alert(df, user_email, app_password)
+        st.success("✅ Email alert sent!")
 
 if enable_schedule:
     threading.Thread(target=scheduler, daemon=True).start()
