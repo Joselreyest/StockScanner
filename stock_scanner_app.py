@@ -1,4 +1,4 @@
-# stock_scanner_app_phase5.py
+# stock_scanner_app_phase6.py
 
 import streamlit as st
 import pandas as pd
@@ -53,7 +53,7 @@ with st.sidebar:
 
     st.subheader("📧 Email Alerts")
     enable_email = st.checkbox("Enable Email Alert")
-    user_email = st.text_input("Your Gmail", placeholder="joselreyest@gmail.com")
+    user_email = st.text_input("Your Gmail", placeholder="you@gmail.com")
     app_password = st.text_input("App Password", type="password")
     
 st.title("📈 Stock Strategy Scanner")
@@ -145,6 +145,7 @@ def scan_stock(ticker):
             "Breakout": True,
             "Volume Spike": True,
             "Gap Up": True,
+            "Chart": data[-30:].copy()
         }
 
     except Exception as e:
@@ -195,9 +196,11 @@ if symbols:
         st.info(f"Scanning {len(tickers)} stocks...")
 
         results = []
+        charts = {}
         for sym in tickers:
             res = scan_stock(sym)
             if res:
+                charts[sym] = res.pop("Chart")
                 results.append(res)
 
         if results:
@@ -205,6 +208,21 @@ if symbols:
             st.success(f"Found {len(df)} matches")
             st.dataframe(df)
             st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
+
+            chart_ticker = st.selectbox("📊 View Chart for", df["Ticker"].tolist())
+            if chart_ticker in charts:
+                chart_data = charts[chart_ticker]
+                fig = go.Figure(data=[
+                    go.Candlestick(
+                        x=chart_data.index,
+                        open=chart_data['Open'],
+                        high=chart_data['High'],
+                        low=chart_data['Low'],
+                        close=chart_data['Close']
+                    )
+                ])
+                fig.update_layout(title=f"Candlestick Chart: {chart_ticker}", xaxis_title="Date", yaxis_title="Price")
+                st.plotly_chart(fig, use_container_width=True)
 
             if enable_email and user_email and app_password:
                 send_email_alert(df, user_email, app_password)
