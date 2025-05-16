@@ -24,20 +24,6 @@ def log_debug(msg):
             print("DEBUG:", msg)
         except Exception:
             pass
-            
-# UI: Sidebar
-st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
-
-with st.sidebar:
-    st.image("logo.png", width=180)
-    st.markdown("**Stock Strategy Scanner**")
-    st.caption("by Jose Reyes")
-    st.checkbox("Enable Debug Mode", key="enable_debug")
-    debug_enabled = st.session_state.get("enable_debug", False)
-    st.text_input("Email to notify (optional)", key="alert_email")
-
-st.title("📈 Stock Strategy Scanner")
-
 
 # ======= Email Alert Function =======
 def send_email_alert(results_df, recipient):
@@ -65,6 +51,21 @@ def send_email_alert(results_df, recipient):
         log_debug("Email alert sent successfully.")
     except Exception as e:
         log_debug(f"Failed to send email alert: {e}")
+        
+# UI: Sidebar
+st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+
+with st.sidebar:
+    st.image("logo.png", width=180)
+    st.markdown("**Stock Strategy Scanner**")
+    st.caption("by Jose Reyes")
+    st.checkbox("Enable Debug Mode", key="enable_debug")
+    debug_enabled = st.session_state.get("enable_debug", False)
+    st.text_input("Email to notify (optional)", key="alert_email")
+
+st.title("📈 Stock Strategy Scanner")
+
+
 
 # Stock Function
 def scan_stock(ticker, settings):
@@ -131,6 +132,7 @@ sp500_metadata = sp500.set_index("Symbol")[["GICS Sector", "GICS Sub-Industry"]]
 
 small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT", "SOUN"]
 
+# Market selection
 st.subheader("Select Market Segment")
 market = st.radio("Choose market type", ["S&P 500", "Small Caps", "Upload Custom CSV"])
 symbols, uploaded_file = [], None
@@ -152,6 +154,7 @@ else:
         except:
             st.error("⚠️ Error reading the uploaded file. Make sure it's a CSV with one column of tickers.")
 
+# Strategy filters
 # Strategy Parameters
 with st.expander("🔧 Strategy Filters"):
     min_volume = st.slider("Minimum Volume", 100_000, 10_000_000, 1_000_000, step=100_000)
@@ -166,9 +169,15 @@ settings = {
     "gap_up_factor": gap_up_factor,
 }
 
+# Select stocks to scan
 selected = st.multiselect("Select stocks to scan (or leave empty to scan all)", symbols)
 tickers = selected if selected else symbols
 
+# Initialize scan results in session state
+if "scan_results" not in st.session_state:
+    st.session_state.scan_results = None
+
+# Scan button logic
 if st.button("🔍 Scan Now"):
     st.info(f"Scanning {len(tickers)} stocks...")
     results = []
@@ -176,34 +185,35 @@ if st.button("🔍 Scan Now"):
         res = scan_stock(sym, settings)
         if res:
             results.append(res)
-
     if results:
         df = pd.DataFrame(results)
+        st.session_state.scan_results = df
         st.success(f"Found {len(df)} matches")
-        st.dataframe(df)
-        st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
 
+        # Trigger email alert async
         email_to = st.session_state.get("alert_email")
         if email_to:
-            log_debug(f"Starting email alert thread for recipient: {email_to}")
-            try:
-                threading.Thread(target=send_email_alert, args=(df, email_to)).start()
-            except Exception as e:
-                log_debug(f"Error starting email alert thread: {e}")
-        else:
-            log_debug("No alert email provided; skipping email alert.")
-
-        symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
-        if symbol_select:
-            chart_data = yf.Ticker(symbol_select).history(period="1mo")
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
-                                         low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
-            st.plotly_chart(fig, use_container_width=True)
+            threading.Thread(target=send_email_alert, args=(df, email_to), daemon=True).start()
     else:
+        st.session_state.scan_results = None
         st.warning("No stocks matched the criteria.")
 
-# Display debug log
+# Display results and chart from session state if available
+if st.session_state.scan_results is not None:
+    df = st.session_state.scan_results
+    st.dataframe(df)
+    st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
+
+    symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
+    if symbol_select:
+        chart_data = yf.Ticker(symbol_select).history(period="1mo")
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
+                                     low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
+        st.plotly_chart(fig, use_container_width=True)
+
+# Show debug logs
+debug_enabled = st.session_state.get("enable_debug", False)
 if debug_enabled and "debug_log" in st.session_state:
     with st.expander("🧞 Debug Log"):
         for entry in st.session_state.debug_log:
