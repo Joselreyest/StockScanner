@@ -11,19 +11,6 @@ import smtplib, ssl
 from email.message import EmailMessage
 import os, json, time, threading
 
-# UI: Sidebar
-st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
-
-with st.sidebar:
-    st.image("logo.png", width=180)
-    st.markdown("**Stock Strategy Scanner**")
-    st.caption("by Jose Reyes")
-    st.checkbox("Enable Debug Mode", key="enable_debug")
-    debug_enabled = st.session_state.get("enable_debug", False)
-    st.text_input("Email to notify (optional)", key="alert_email")
-
-st.title("📈 Stock Strategy Scanner")
-
 # Helper function for debug logging
 
 # ======= Debug logging helper =======
@@ -37,8 +24,49 @@ def log_debug(msg):
             print("DEBUG:", msg)
         except Exception:
             pass
+            
+# UI: Sidebar
+st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+
+with st.sidebar:
+    st.image("logo.png", width=180)
+    st.markdown("**Stock Strategy Scanner**")
+    st.caption("by Jose Reyes")
+    st.checkbox("Enable Debug Mode", key="enable_debug")
+    debug_enabled = st.session_state.get("enable_debug", False)
+    st.text_input("Email to notify (optional)", key="alert_email")
+
+st.title("📈 Stock Strategy Scanner")
+
 
 # ======= Email Alert Function =======
+def send_email_alert(results_df, recipient):
+    try:
+        if not recipient:
+            log_debug("Email alert skipped: No recipient provided.")
+            return
+
+        log_debug(f"Preparing to send email alert to {recipient} with {len(results_df)} matching stocks.")
+
+        subject = "Stock Scanner Alert - Matching Stocks Found"
+        body = results_df.to_string(index=False)
+
+        msg = EmailMessage()
+        msg.set_content(body)
+        msg["Subject"] = subject
+        msg["From"] = os.getenv("EMAIL_FROM")
+        msg["To"] = recipient
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(os.getenv("EMAIL_FROM"), os.getenv("EMAIL_PASSWORD"))
+            server.send_message(msg)
+
+        log_debug("Email alert sent successfully.")
+    except Exception as e:
+        log_debug(f"Failed to send email alert: {e}")
+
+# Stock Function
 def scan_stock(ticker, settings):
     try:
         stock = yf.Ticker(ticker)
@@ -96,6 +124,7 @@ def scan_stock(ticker, settings):
         log_debug(f"Error fetching {ticker}: {e}")
         return None
 
+# Load S&P 500 data and metadata
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 symbols_500 = sp500["Symbol"].tolist()
 sp500_metadata = sp500.set_index("Symbol")[["GICS Sector", "GICS Sub-Industry"]].to_dict("index")
@@ -155,7 +184,14 @@ if st.button("🔍 Scan Now"):
         st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
 
         email_to = st.session_state.get("alert_email")
-        threading.Thread(target=send_email_alert, args=(df, email_to)).start()
+        if email_to:
+            log_debug(f"Starting email alert thread for recipient: {email_to}")
+            try:
+                threading.Thread(target=send_email_alert, args=(df, email_to)).start()
+            except Exception as e:
+                log_debug(f"Error starting email alert thread: {e}")
+        else:
+            log_debug("No alert email provided; skipping email alert.")
 
         symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
         if symbol_select:
