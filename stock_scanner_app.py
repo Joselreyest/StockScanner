@@ -1,3 +1,13 @@
+def log_debug(msg):
+    debug_enabled = st.session_state.get("enable_debug", False)
+    if debug_enabled:
+        if "debug_log" not in st.session_state:
+            st.session_state.debug_log = []
+        st.session_state.debug_log.append(msg)
+        try:
+            print("DEBUG:", msg)
+        except Exception:
+            pass
 
 import streamlit as st
 import pandas as pd
@@ -25,28 +35,10 @@ with st.sidebar:
 
 st.title("📈 Stock Strategy Scanner")
 
-# Helper function for debug logging
-
-# ======= Debug logging helper =======
-def log_debug(msg):
-    debug_enabled = st.session_state.get("enable_debug", False)
-    if debug_enabled:
-        if "debug_log" not in st.session_state:
-            st.session_state.debug_log = []
-        st.session_state.debug_log.append(msg)
-        try:
-            print("DEBUG:", msg)
-        except Exception:
-            pass
-
-# ======= Email Alert Function =======
 def send_email_alert(results_df, recipient):
     try:
         if not recipient:
-            log_debug("Email alert skipped: No recipient provided.")
             return
-
-        log_debug(f"Preparing to send email alert to {recipient} with {len(results_df)} matching stocks.")
 
         subject = "Stock Scanner Alert - Matching Stocks Found"
         body = results_df.to_string(index=False)
@@ -65,8 +57,7 @@ def send_email_alert(results_df, recipient):
         log_debug("Email alert sent successfully.")
     except Exception as e:
         log_debug(f"Failed to send email alert: {e}")
-        
-# Stock Function
+
 def scan_stock(ticker, settings):
     try:
         stock = yf.Ticker(ticker)
@@ -146,16 +137,13 @@ def get_nasdaq_symbols():
         except Exception as e:
             log_debug(f"Failed to get NASDAQ from CSV: {str(e)}")
             return ['AAPL', 'MSFT', 'AMZN', 'GOOG', 'META', 'TSLA', 'NVDA', 'AMD', 'INTC', 'QCOM']
-            
 
-# Load S&P 500 data and metadata
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 symbols_500 = sp500["Symbol"].tolist()
 sp500_metadata = sp500.set_index("Symbol")[["GICS Sector", "GICS Sub-Industry"]].to_dict("index")
 
 small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT", "SOUN"]
 
-# Market selection
 st.subheader("Select Market Segment")
 market = st.radio("Choose market type", ["S&P 500", "Nasdaq", "Small Caps", "Upload Custom CSV"])
 symbols, uploaded_file = [], None
@@ -179,8 +167,6 @@ else:
         except:
             st.error("⚠️ Error reading the uploaded file. Make sure it's a CSV with one column of tickers.")
 
-# Strategy filters
-# Strategy Parameters
 with st.expander("🔧 Strategy Filters"):
     min_volume = st.slider("Minimum Volume", 100_000, 10_000_000, 1_000_000, step=100_000)
     rsi_max = st.slider("Max RSI", 10, 90, 30)
@@ -194,15 +180,9 @@ settings = {
     "gap_up_factor": gap_up_factor,
 }
 
-# Select stocks to scan
 selected = st.multiselect("Select stocks to scan (or leave empty to scan all)", symbols)
 tickers = selected if selected else symbols
 
-# Initialize scan results in session state
-if "scan_results" not in st.session_state:
-    st.session_state.scan_results = None
-
-# Scan button logic
 if st.button("🔍 Scan Now"):
     st.info(f"Scanning {len(tickers)} stocks...")
     results = []
@@ -231,16 +211,20 @@ if st.button("🔍 Scan Now"):
 
         symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
         if symbol_select:
-            chart_data = yf.Ticker(symbol_select).history(period="1mo")
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
-                                         low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                chart_data = yf.Ticker(symbol_select).history(period="1mo")
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
+                                             low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
+                st.plotly_chart(fig, use_container_width=True)
+            except yf.YFRateLimitError:
+                st.error("⚠️ Yahoo Finance rate limit hit. Please wait a moment before trying again.")
+            except Exception as e:
+                log_debug(f"Chart error: {e}")
+                st.error("⚠️ Failed to load chart data.")
     else:
         st.warning(f"❌ No stocks matched your criteria out of {len(tickers)} scanned.")
 
-
-# Show debug logs
 if debug_enabled and "debug_log" in st.session_state:
     with st.expander("🧞 Debug Log"):
         for entry in st.session_state.debug_log:
