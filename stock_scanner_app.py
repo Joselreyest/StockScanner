@@ -1,5 +1,4 @@
 
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -10,6 +9,21 @@ from plotly.subplots import make_subplots
 import smtplib, ssl
 from email.message import EmailMessage
 import os, json, time, threading
+import requests
+from bs4 import BeautifulSoup
+
+# UI: Sidebar
+st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
+
+with st.sidebar:
+    st.image("logo.png", width=180)
+    st.markdown("**Stock Strategy Scanner**")
+    st.caption("by Jose Reyes")
+    st.checkbox("Enable Debug Mode", key="enable_debug")
+    debug_enabled = st.session_state.get("enable_debug", False)
+    st.text_input("Email to notify (optional)", key="alert_email")
+
+st.title("📈 Stock Strategy Scanner")
 
 # Helper function for debug logging
 
@@ -52,21 +66,6 @@ def send_email_alert(results_df, recipient):
     except Exception as e:
         log_debug(f"Failed to send email alert: {e}")
         
-# UI: Sidebar
-st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
-
-with st.sidebar:
-    st.image("logo.png", width=180)
-    st.markdown("**Stock Strategy Scanner**")
-    st.caption("by Jose Reyes")
-    st.checkbox("Enable Debug Mode", key="enable_debug")
-    debug_enabled = st.session_state.get("enable_debug", False)
-    st.text_input("Email to notify (optional)", key="alert_email")
-
-st.title("📈 Stock Strategy Scanner")
-
-
-
 # Stock Function
 def scan_stock(ticker, settings):
     try:
@@ -79,7 +78,6 @@ def scan_stock(ticker, settings):
         latest = data.iloc[-1]
         close, high, low, open_, vol = latest['Close'], latest['High'], latest['Low'], latest['Open'], latest['Volume']
 
-        # RSI calculation
         delta = data['Close'].diff()
         gain = np.where(delta > 0, delta, 0)
         loss = np.where(delta < 0, -delta, 0)
@@ -125,6 +123,31 @@ def scan_stock(ticker, settings):
         log_debug(f"Error fetching {ticker}: {e}")
         return None
 
+def get_nasdaq_symbols():
+    try:
+        url = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=10000"
+        headers = {
+            'User-Agent': 'Mozilla/5.0',
+            'Accept': 'application/json'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        data = response.json()
+        return [item['symbol'] for item in data['data']['table']['rows']]
+    except Exception as e:
+        log_debug(f"Failed to get NASDAQ from API: {str(e)}")
+        try:
+            url = "https://www.nasdaq.com/market-activity/stocks/screener"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=15)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            download_link = soup.find('a', {'data-test': 'download-table'})['href']
+            df = pd.read_csv(download_link)
+            return df['Symbol'].tolist()
+        except Exception as e:
+            log_debug(f"Failed to get NASDAQ from CSV: {str(e)}")
+            return ['AAPL', 'MSFT', 'AMZN', 'GOOG', 'META', 'TSLA', 'NVDA', 'AMD', 'INTC', 'QCOM']
+            
+
 # Load S&P 500 data and metadata
 sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 symbols_500 = sp500["Symbol"].tolist()
@@ -134,7 +157,7 @@ small_caps = ["PLUG", "FUBO", "BB", "NNDM", "GPRO", "AMC", "CLSK", "MARA", "RIOT
 
 # Market selection
 st.subheader("Select Market Segment")
-market = st.radio("Choose market type", ["S&P 500", "Small Caps", "Upload Custom CSV"])
+market = st.radio("Choose market type", ["S&P 500", "Nasdaq", "Small Caps", "Upload Custom CSV"])
 symbols, uploaded_file = [], None
 
 if market == "S&P 500":
@@ -143,6 +166,8 @@ if market == "S&P 500":
     selected_sectors = st.multiselect("Filter by Sector (Optional)", sectors)
     if selected_sectors:
         symbols = [s for s in symbols if sp500_metadata.get(s, {}).get("GICS Sector") in selected_sectors]
+elif market == "Nasdaq":
+    symbols = get_nasdaq_symbols()
 elif market == "Small Caps":
     symbols = small_caps
 else:
@@ -181,39 +206,41 @@ if "scan_results" not in st.session_state:
 if st.button("🔍 Scan Now"):
     st.info(f"Scanning {len(tickers)} stocks...")
     results = []
-    for sym in tickers:
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
+
+    for idx, sym in enumerate(tickers):
         res = scan_stock(sym, settings)
         if res:
             results.append(res)
+        progress = int((idx + 1) / len(tickers) * 100)
+        progress_bar.progress(progress)
+        progress_text.text(f"Scanning {sym}... ({idx + 1}/{len(tickers)})")
+
+    progress_bar.empty()
+    progress_text.empty()
+
     if results:
         df = pd.DataFrame(results)
-        st.session_state.scan_results = df
-        st.success(f"Found {len(df)} matches")
+        st.success(f"✅ Scan Complete: {len(df)} stocks matched your criteria out of {len(tickers)} scanned.")
+        st.dataframe(df)
+        st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
 
-        # Trigger email alert async
         email_to = st.session_state.get("alert_email")
-        if email_to:
-            threading.Thread(target=send_email_alert, args=(df, email_to), daemon=True).start()
+        threading.Thread(target=send_email_alert, args=(df, email_to)).start()
+
+        symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
+        if symbol_select:
+            chart_data = yf.Ticker(symbol_select).history(period="1mo")
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
+                                         low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
+            st.plotly_chart(fig, use_container_width=True)
     else:
-        st.session_state.scan_results = None
-        st.warning("No stocks matched the criteria.")
+        st.warning(f"❌ No stocks matched your criteria out of {len(tickers)} scanned.")
 
-# Display results and chart from session state if available
-if st.session_state.scan_results is not None:
-    df = st.session_state.scan_results
-    st.dataframe(df)
-    st.download_button("📥 Download CSV", df.to_csv(index=False), "scanner_results.csv")
-
-    symbol_select = st.selectbox("Select a symbol to view chart", df["Ticker"].tolist())
-    if symbol_select:
-        chart_data = yf.Ticker(symbol_select).history(period="1mo")
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
-                                     low=chart_data['Low'], close=chart_data['Close'], name="Candlestick"))
-        st.plotly_chart(fig, use_container_width=True)
 
 # Show debug logs
-debug_enabled = st.session_state.get("enable_debug", False)
 if debug_enabled and "debug_log" in st.session_state:
     with st.expander("🧞 Debug Log"):
         for entry in st.session_state.debug_log:
