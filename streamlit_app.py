@@ -36,6 +36,17 @@ def get_nasdaq_symbols():
     return [ticker.replace(".", "-") for ticker in tickers]
 
 @st.cache_data
+def get_all_nasdaq_symbols():
+    try:
+        url = "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+        df = pd.read_csv(url, sep="|")
+        tickers = df[df['Test Issue'] == 'N']['Symbol'].tolist()
+        return tickers
+    except Exception as e:
+        log_debug(f"Failed to fetch full NASDAQ symbols: {e}")
+        return []
+        
+@st.cache_data
 def get_sp500_symbols():
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     html = requests.get(url).text
@@ -66,13 +77,19 @@ def scan_stock(symbol):
     try:
         df = yf.Ticker(symbol).history(period="5d")
         if df.empty or len(df) < 2:
+            log_debug(f"{symbol}: Not enough data")
             return None
         df["RSI"] = compute_rsi(df["Close"])
         df["Volume Spike"] = df["Volume"] > (df["Volume"].shift(1) * st.session_state.volume_spike_factor)
+
         gap_up = df["Open"].iloc[-1] > df["Close"].iloc[-2] * st.session_state.gap_up_factor
         rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
         volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
-        score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
+        volume_spike = df["Volume Spike"].iloc[-1]
+
+        log_debug(f"{symbol}: GapUp={gap_up}, RSI<{st.session_state.rsi_max}={rsi_cond}, Volume>{st.session_state.min_volume}={volume_cond}, VolumeSpike={volume_spike}")
+
+        score = sum([gap_up, rsi_cond, volume_spike])
         if all([gap_up, rsi_cond, volume_cond]):
             return {
                 "Symbol": symbol,
@@ -81,6 +98,8 @@ def scan_stock(symbol):
                 "Gap Up": gap_up,
                 "Score": score
             }
+        else:
+            return None
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
@@ -174,11 +193,13 @@ with st.sidebar:
     st.text_input("Exclude tickers (comma separated)", key="exclude_tickers")
     scan_time_input = st.time_input("Schedule Daily Scan", key="scan_time")
 
-    source_option = st.selectbox("Select Ticker Source", ["NASDAQ 100", "S&P 500", "Small Caps", "Upload CSV"])
+    source_option = st.selectbox("Select Ticker Source", ["NASDAQ Full", "NASDAQ 100", "S&P 500", "Small Caps", "Upload CSV"])    
     uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if source_option == "Upload CSV" else None
 
     if source_option == "NASDAQ 100":
         ticker_list = get_nasdaq_symbols()
+    elif source_option == "NASDAQ Full":
+        ticker_list = get_all_nasdaq_symbols()        
     elif source_option == "S&P 500":
         ticker_list = get_sp500_symbols()
     elif source_option == "Small Caps":
