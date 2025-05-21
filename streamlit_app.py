@@ -28,22 +28,13 @@ st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
 @st.cache_data
 def get_nasdaq_symbols():
-    url = "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
-    df = pd.read_csv(url, sep="|")
-    tickers = df[df["Test Issue"] == "N"]["Symbol"].tolist()
-    return [ticker.strip().upper() for ticker in tickers if ticker not in ["Symbol", "File Creation Time"]]
-    
-@st.cache_data
-def get_all_nasdaq_symbols():
-    try:
-        url = "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
-        df = pd.read_csv(url, sep="|")
-        tickers = df[df['Test Issue'] == 'N']['Symbol'].tolist()
-        return tickers
-    except Exception as e:
-        log_debug(f"Failed to fetch full NASDAQ symbols: {e}")
-        return []
-        
+    url = "https://api.nasdaq.com/api/screener/stocks?exchange=nasdaq&download=true"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    tickers = [row["symbol"] for row in data["data"]["rows"]]
+    return tickers
+
 @st.cache_data
 def get_sp500_symbols():
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -57,12 +48,14 @@ def get_sp500_symbols():
 def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
-def send_email_alert(subject, body):
+def send_email_alert(subject, body, html=None):
     receiver = st.session_state.get("alert_email")
     if not receiver:
         return
     msg = EmailMessage()
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype='html')
     msg["Subject"] = subject
     msg["From"] = "noreply@stockscanner.app"
     msg["To"] = receiver
@@ -98,6 +91,7 @@ def scan_stock(symbol):
             log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
             return {
                 "Symbol": symbol,
+                "Price": df["Close"].iloc[-1],
                 "RSI": df["RSI"].iloc[-1],
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
@@ -108,6 +102,7 @@ def scan_stock(symbol):
             score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
             return {
                 "Symbol": symbol,
+                "Price": df["Close"].iloc[-1],
                 "RSI": df["RSI"].iloc[-1],
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
