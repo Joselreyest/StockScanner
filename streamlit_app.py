@@ -1,4 +1,3 @@
-
 def log_debug(msg):
     debug_enabled = st.session_state.get("enable_debug", False)
     if debug_enabled:
