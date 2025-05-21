@@ -67,65 +67,44 @@ def send_email_alert(subject, body):
     msg["From"] = "noreply@stockscanner.app"
     msg["To"] = receiver
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-        server.login(os.environ.get("EMAIL_USER"), os.environ.get("EMAIL_PASS"))
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(os.environ.get("EMAIL_USER"), os.environ.get("EMAIL_PASS"))
+            server.send_message(msg)
+    except Exception as e:
+        log_debug(f"Failed to send email: {e}")
 
 def scan_stock(symbol):
     try:
         df = yf.Ticker(symbol).history(period="1mo")
-        if df.empty or len(df) < 2:
-            log_debug(f"{symbol}: Not enough data")
+        if df.empty or len(df) < 15:
+            log_debug(f"Failed: Not enough data for {symbol}")
             return None
-
         df["RSI"] = compute_rsi(df["Close"])
+        if df["RSI"].isnull().all():
+            log_debug(f"Failed: RSI is all None for {symbol}")
+            return None
         df["Volume Spike"] = df["Volume"] > (df["Volume"].shift(1) * st.session_state.volume_spike_factor)
+        gap_up = df["Open"].iloc[-1] > df["Close"].iloc[-2] * st.session_state.gap_up_factor
+        rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
+        volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
 
-        latest = df.iloc[-1]
-        prev_close = df["Close"].iloc[-2]
+        failed_criteria = []
+        if not gap_up: failed_criteria.append("Gap Up")
+        if not rsi_cond: failed_criteria.append("RSI")
+        if not volume_cond: failed_criteria.append("Volume")
 
-        gap_up = latest["Open"] > prev_close * st.session_state.gap_up_factor
-        rsi_cond = latest["RSI"] < st.session_state.rsi_max
-        volume_cond = latest["Volume"] > st.session_state.min_volume
-        volume_spike = df["Volume Spike"].iloc[-1]
-
-        failed_reasons = []
-        if not gap_up:
-            failed_reasons.append("GapUp")
-        if not rsi_cond:
-            failed_reasons.append("RSI")
-        if not volume_cond:
-            failed_reasons.append("Volume")
-
-        debug_msg = (
-            f"{symbol}: GapUp={gap_up} (Open={latest['Open']:.2f} vs PrevClose={prev_close:.2f} * {st.session_state.gap_up_factor}), "
-            f"RSI={latest['RSI']:.2f} (RSI_OK={rsi_cond}), "
-            f"Volume={latest['Volume']} (Vol_OK={volume_cond}), "
-            f"Spike={volume_spike}"
-        )
-        log_debug(debug_msg)
-
-        if all([gap_up, rsi_cond, volume_cond]):
-            return {
-                "Symbol": symbol,
-                "RSI": round(latest["RSI"], 2),
-                "Volume": int(latest["Volume"]),
-                "Gap Up": gap_up,
-                "Volume Spike": volume_spike,
-                "Score": sum([gap_up, rsi_cond, volume_spike]),
-                "Reason": "Matched"
-            }
+        if failed_criteria:
+            log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
         else:
+            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
             return {
                 "Symbol": symbol,
-                "RSI": round(latest["RSI"], 2),
-                "Volume": int(latest["Volume"]),
+                "RSI": df["RSI"].iloc[-1],
+                "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
-                "Volume Spike": volume_spike,
-                "Score": sum([gap_up, rsi_cond, volume_spike]),
-                "Reason": "Failed: " + ", ".join(failed_reasons)
+                "Score": score
             }
-
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
