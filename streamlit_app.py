@@ -122,22 +122,36 @@ def plot_chart(symbol):
 def perform_daily_scan():
     results = []
     excluded = [x.strip().upper() for x in st.session_state.get("exclude_tickers", "").split(",") if x]
+    log_debug(f"Starting scan with {len(ticker_list)} tickers.")
+    log_debug(f"Excluded tickers: {excluded}")
     progress_bar = st.progress(0, text="Scanning tickers...")
+
     for i, ticker in enumerate(ticker_list):
         if ticker in excluded:
-            log_debug(f"Excluded ticker: {ticker}")
+            log_debug(f"Skipping excluded ticker: {ticker}")
             continue
+
+        log_debug(f"Scanning {ticker}")
         res = scan_stock(ticker)
+
         if res:
+            log_debug(f"Match found: {res}")
             results.append(res)
-        progress_bar.progress((i+1)/len(ticker_list))
+        else:
+            log_debug(f"No match for {ticker}")
+
+        progress_bar.progress((i + 1) / len(ticker_list))
+
     progress_bar.empty()
+
     if results:
         df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df)
+
         if "alert_email" in st.session_state and st.session_state.alert_email:
             body = df.to_string(index=False)
             send_email_alert("Stock Scanner Alert", body)
+
         symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
         plot_chart(symbol_select)
     else:
