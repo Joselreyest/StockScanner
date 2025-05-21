@@ -21,6 +21,7 @@ from email.message import EmailMessage
 import os, json, time, threading
 import requests
 from bs4 import BeautifulSoup
+import schedule
 
 # UI: Sidebar
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
@@ -33,6 +34,7 @@ with st.sidebar:
     debug_enabled = st.session_state.get("enable_debug", False)
     st.text_input("Email to notify (optional)", key="alert_email")
     st.text_input("Exclude tickers (comma separated)", key="exclude_tickers")
+    st.time_input("Schedule Daily Scan", key="scan_time")
     if st.button("💾 Save Filter Preset"):
         preset = {
             "min_volume": st.session_state.min_volume,
@@ -137,4 +139,52 @@ def scan_stock(ticker, settings):
         log_debug(f"Error fetching {ticker}: {e}")
         return None
 
-# [Rest of the unchanged code continues...]
+# Daily scan function
+
+def perform_daily_scan():
+    try:
+        log_debug("Running scheduled daily scan...")
+        exclude_tickers = st.session_state.get("exclude_tickers", "").upper().split(',')
+        exclude_tickers = [x.strip() for x in exclude_tickers if x.strip()]
+        scan_settings = {
+            "min_volume": st.session_state.get("min_volume", 100000),
+            "rsi_max": st.session_state.get("rsi_max", 70),
+            "volume_spike_factor": st.session_state.get("volume_spike_factor", 1.5),
+            "gap_up_factor": st.session_state.get("gap_up_factor", 1.02)
+        }
+        ticker_list = ["AAPL", "MSFT", "GOOGL", "TSLA", "NVDA", "AMZN"]
+        results = []
+        for ticker in ticker_list:
+            if ticker in exclude_tickers:
+                log_debug(f"Skipping excluded ticker: {ticker}")
+                continue
+            result = scan_stock(ticker, scan_settings)
+            if result:
+                results.append(result)
+
+        if results:
+            df_results = pd.DataFrame(results).sort_values(by="Score", ascending=False)
+            send_email_alert(df_results, st.session_state.get("alert_email"))
+            log_debug("Scan completed and email sent.")
+        else:
+            log_debug("Scan completed. No matching stocks found.")
+    except Exception as e:
+        log_debug(f"Scheduled scan failed: {e}")
+
+# Scheduler thread
+if "_scheduler_thread_started" not in st.session_state:
+    def run_schedule():
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+    threading.Thread(target=run_schedule, daemon=True).start()
+    st.session_state._scheduler_thread_started = True
+
+# Schedule job if time set
+if "_daily_job_scheduled" not in st.session_state:
+    scan_time = st.session_state.get("scan_time")
+    if scan_time:
+        schedule.every().day.at(scan_time.strftime("%H:%M")).do(perform_daily_scan)
+        st.session_state._daily_job_scheduled = True
+        log_debug(f"Daily scan scheduled at {scan_time.strftime('%H:%M')}")
