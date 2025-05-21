@@ -6,3 +6,6 @@ lxml
 plotly
 ta
 schedule
+scikit-learn
+beautifulsoup4
+requests
