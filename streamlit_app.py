@@ -205,11 +205,11 @@ def perform_daily_scan():
         if "alert_email" in st.session_state and st.session_state.alert_email:
             body = df.to_string(index=False)
 
-            if not results_df.empty:
-                html_body = format_email_table(results_df)
-                send_email_alert("Stock Scanner Alert", html=html_body)
-            else:
-                send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
+        if "results_df" in locals() and not results_df.empty:
+            html_body = format_email_table(results_df)
+            send_email_alert("Stock Scanner Alert", html=html_body)
+        else:
+            send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
     
         symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
         plot_chart(symbol_select)
