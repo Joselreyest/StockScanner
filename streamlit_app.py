@@ -195,7 +195,7 @@ def perform_daily_scan():
             color = "#d4edda" if row["Reason"] == "Matched" else "#f8d7da"
             return [f"background-color: {color}"] * len(row)
 
-st.dataframe(df.style.apply(highlight_row, axis=1))
+        st.dataframe(df.style.apply(highlight_row, axis=1))
 
         if "alert_email" in st.session_state and st.session_state.alert_email:
             body = df.to_string(index=False)
