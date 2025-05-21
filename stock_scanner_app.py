@@ -22,6 +22,7 @@ import os, json, time, threading
 import requests
 from bs4 import BeautifulSoup
 import schedule
+from sklearn.linear_model import LinearRegression
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
@@ -95,10 +96,16 @@ def plot_chart(symbol):
     try:
         data = yf.Ticker(symbol).history(period="1mo")
         data["RSI"] = compute_rsi(data["Close"])
+        data["SMA20"] = data["Close"].rolling(window=20).mean()
+        data["SMA50"] = data["Close"].rolling(window=50).mean()
+
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
         fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"]), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA 20"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA 50"), row=1, col=1)
         fig.add_trace(go.Scatter(x=data.index, y=data["RSI"], mode="lines", name="RSI"), row=2, col=1)
-        fig.update_layout(title=f"{symbol} Chart with RSI")
+
+        fig.update_layout(title=f"{symbol} Chart with RSI & Moving Averages")
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Failed to load chart: {e}")
