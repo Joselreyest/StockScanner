@@ -73,7 +73,7 @@ def send_email_alert(subject, body):
 
 def scan_stock(symbol):
     try:
-        df = yf.Ticker(symbol).history(period="5d")
+        df = yf.Ticker(symbol).history(period="1mo")
         if df.empty or len(df) < 2:
             log_debug(f"{symbol}: Not enough data")
             return None
