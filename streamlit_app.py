@@ -96,15 +96,24 @@ def scan_stock(symbol):
 
         if failed_criteria:
             log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
-        else:
-            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
-            return {
-                "Symbol": symbol,
-                "RSI": df["RSI"].iloc[-1],
-                "Volume": df["Volume"].iloc[-1],
-                "Gap Up": gap_up,
-                "Score": score
-            }
+        return {
+            "Symbol": symbol,
+            "RSI": df["RSI"].iloc[-1],
+            "Volume": df["Volume"].iloc[-1],
+            "Gap Up": gap_up,
+            "Score": 0,
+            "Reason": ", ".join(failed_criteria)
+        }
+    else:
+        score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
+        return {
+            "Symbol": symbol,
+            "RSI": df["RSI"].iloc[-1],
+            "Volume": df["Volume"].iloc[-1],
+            "Gap Up": gap_up,
+            "Score": score,
+            "Reason": "Matched"
+    }
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
@@ -171,8 +180,8 @@ def perform_daily_scan():
     if results:
         df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         def highlight_row(row):
-            color = "#d4edda" if row["Reason"] == "Matched" else "#f8d7da"
-            return [f"background-color: {color}"] * len(row)
+            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
+            return ["background-color: {}".format(color)] * len(row)
 
         st.dataframe(df.style.apply(highlight_row, axis=1))
 
