@@ -206,13 +206,11 @@ with st.sidebar:
     st.text_input("Exclude tickers (comma separated)", key="exclude_tickers")
     scan_time_input = st.time_input("Schedule Daily Scan", key="scan_time")
 
-    source_option = st.selectbox("Select Ticker Source", ["NASDAQ Full", "NASDAQ 100", "S&P 500", "Small Caps", "Upload CSV"])    
+    source_option = st.selectbox("Select Ticker Source", ["NASDAQ", "S&P 500", "Small Caps", "Upload CSV"])    
     uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if source_option == "Upload CSV" else None
 
     if source_option == "NASDAQ 100":
         ticker_list = get_nasdaq_symbols()
-    elif source_option == "NASDAQ Full":
-        ticker_list = get_all_nasdaq_symbols()        
     elif source_option == "S&P 500":
         ticker_list = get_sp500_symbols()
     elif source_option == "Small Caps":
