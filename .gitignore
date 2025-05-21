@@ -1,0 +1,15 @@
+.filter_presets.json
+__pycache__/
+*.py[cod]
+*$py.class
+
+.env
+.DS_Store
+.vscode/
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+.streamlit/
+secrets.toml
