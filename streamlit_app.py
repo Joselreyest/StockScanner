@@ -89,29 +89,42 @@ def scan_stock(symbol):
         volume_cond = latest["Volume"] > st.session_state.min_volume
         volume_spike = df["Volume Spike"].iloc[-1]
 
-        score = sum([gap_up, rsi_cond, volume_cond, volume_spike])
-        passes_all = all([gap_up, rsi_cond, volume_cond])
+        failed_reasons = []
+        if not gap_up:
+            failed_reasons.append("GapUp")
+        if not rsi_cond:
+            failed_reasons.append("RSI")
+        if not volume_cond:
+            failed_reasons.append("Volume")
 
         debug_msg = (
-            f"{symbol}: GapUp={gap_up} "
-            f"(Open={latest['Open']:.2f} vs PrevClose={prev_close:.2f} * {st.session_state.gap_up_factor}), "
+            f"{symbol}: GapUp={gap_up} (Open={latest['Open']:.2f} vs PrevClose={prev_close:.2f} * {st.session_state.gap_up_factor}), "
             f"RSI={latest['RSI']:.2f} (RSI_OK={rsi_cond}), "
             f"Volume={latest['Volume']} (Vol_OK={volume_cond}), "
             f"Spike={volume_spike}"
         )
         log_debug(debug_msg)
 
-        if passes_all:
+        if all([gap_up, rsi_cond, volume_cond]):
             return {
                 "Symbol": symbol,
                 "RSI": round(latest["RSI"], 2),
                 "Volume": int(latest["Volume"]),
                 "Gap Up": gap_up,
                 "Volume Spike": volume_spike,
-                "Score": score
+                "Score": sum([gap_up, rsi_cond, volume_spike]),
+                "Reason": "Matched"
             }
-
-        return None
+        else:
+            return {
+                "Symbol": symbol,
+                "RSI": round(latest["RSI"], 2),
+                "Volume": int(latest["Volume"]),
+                "Gap Up": gap_up,
+                "Volume Spike": volume_spike,
+                "Score": sum([gap_up, rsi_cond, volume_spike]),
+                "Reason": "Failed: " + ", ".join(failed_reasons)
+            }
 
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
@@ -178,7 +191,11 @@ def perform_daily_scan():
 
     if results:
         df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-        st.dataframe(df)
+        def highlight_row(row):
+            color = "#d4edda" if row["Reason"] == "Matched" else "#f8d7da"
+            return [f"background-color: {color}"] * len(row)
+
+st.dataframe(df.style.apply(highlight_row, axis=1))
 
         if "alert_email" in st.session_state and st.session_state.alert_email:
             body = df.to_string(index=False)
