@@ -208,3 +208,11 @@ if "scheduler_thread" not in st.session_state:
     thread = threading.Thread(target=scheduler, daemon=True)
     thread.start()
     st.session_state.scheduler_thread = thread
+
+if st.session_state.get("enable_debug", False):
+    if "debug_log" in st.session_state and st.session_state.debug_log:
+        st.subheader("🛠 Debug Log")
+        for entry in st.session_state.debug_log:
+            st.text(entry)
+    else:
+        st.info("Debug mode is enabled, but no logs have been generated yet.")
