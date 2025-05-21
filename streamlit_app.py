@@ -28,13 +28,11 @@ st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
 @st.cache_data
 def get_nasdaq_symbols():
-    url = "https://en.wikipedia.org/wiki/NASDAQ-100"
-    html = requests.get(url).text
-    soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table", {"id": "constituents"})
-    tickers = pd.read_html(str(table))[0]["Ticker"].tolist()
-    return [ticker.replace(".", "-") for ticker in tickers]
-
+    url = "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+    df = pd.read_csv(url, sep="|")
+    tickers = df[df["Test Issue"] == "N"]["Symbol"].tolist()
+    return [ticker.strip().upper() for ticker in tickers if ticker not in ["Symbol", "File Creation Time"]]
+    
 @st.cache_data
 def get_all_nasdaq_symbols():
     try:
@@ -79,27 +77,42 @@ def scan_stock(symbol):
         if df.empty or len(df) < 2:
             log_debug(f"{symbol}: Not enough data")
             return None
+
         df["RSI"] = compute_rsi(df["Close"])
         df["Volume Spike"] = df["Volume"] > (df["Volume"].shift(1) * st.session_state.volume_spike_factor)
 
-        gap_up = df["Open"].iloc[-1] > df["Close"].iloc[-2] * st.session_state.gap_up_factor
-        rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
-        volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
+        latest = df.iloc[-1]
+        prev_close = df["Close"].iloc[-2]
+
+        gap_up = latest["Open"] > prev_close * st.session_state.gap_up_factor
+        rsi_cond = latest["RSI"] < st.session_state.rsi_max
+        volume_cond = latest["Volume"] > st.session_state.min_volume
         volume_spike = df["Volume Spike"].iloc[-1]
 
-        log_debug(f"{symbol}: GapUp={gap_up}, RSI<{st.session_state.rsi_max}={rsi_cond}, Volume>{st.session_state.min_volume}={volume_cond}, VolumeSpike={volume_spike}")
+        score = sum([gap_up, rsi_cond, volume_cond, volume_spike])
+        passes_all = all([gap_up, rsi_cond, volume_cond])
 
-        score = sum([gap_up, rsi_cond, volume_spike])
-        if all([gap_up, rsi_cond, volume_cond]):
+        debug_msg = (
+            f"{symbol}: GapUp={gap_up} "
+            f"(Open={latest['Open']:.2f} vs PrevClose={prev_close:.2f} * {st.session_state.gap_up_factor}), "
+            f"RSI={latest['RSI']:.2f} (RSI_OK={rsi_cond}), "
+            f"Volume={latest['Volume']} (Vol_OK={volume_cond}), "
+            f"Spike={volume_spike}"
+        )
+        log_debug(debug_msg)
+
+        if passes_all:
             return {
                 "Symbol": symbol,
-                "RSI": df["RSI"].iloc[-1],
-                "Volume": df["Volume"].iloc[-1],
+                "RSI": round(latest["RSI"], 2),
+                "Volume": int(latest["Volume"]),
                 "Gap Up": gap_up,
+                "Volume Spike": volume_spike,
                 "Score": score
             }
-        else:
-            return None
+
+        return None
+
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
