@@ -98,14 +98,23 @@ def plot_chart(symbol):
         data["RSI"] = compute_rsi(data["Close"])
         data["SMA20"] = data["Close"].rolling(window=20).mean()
         data["SMA50"] = data["Close"].rolling(window=50).mean()
+        data["UpperBB"] = data["Close"].rolling(window=20).mean() + 2*data["Close"].rolling(window=20).std()
+        data["LowerBB"] = data["Close"].rolling(window=20).mean() - 2*data["Close"].rolling(window=20).std()
 
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.6, 0.2, 0.2])
         fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"]), row=1, col=1)
         fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA 20"), row=1, col=1)
         fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA 50"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["UpperBB"], mode="lines", name="Upper BB", line=dict(dash='dot')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["LowerBB"], mode="lines", name="Lower BB", line=dict(dash='dot')), row=1, col=1)
         fig.add_trace(go.Scatter(x=data.index, y=data["RSI"], mode="lines", name="RSI"), row=2, col=1)
 
-        fig.update_layout(title=f"{symbol} Chart with RSI & Moving Averages")
+        macd_line = data["Close"].ewm(span=12).mean() - data["Close"].ewm(span=26).mean()
+        signal_line = macd_line.ewm(span=9).mean()
+        fig.add_trace(go.Scatter(x=data.index, y=macd_line, mode="lines", name="MACD Line"), row=3, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=signal_line, mode="lines", name="Signal Line"), row=3, col=1)
+
+        fig.update_layout(title=f"{symbol} Chart with Indicators")
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Failed to load chart: {e}")
@@ -113,12 +122,16 @@ def plot_chart(symbol):
 def perform_daily_scan():
     results = []
     excluded = [x.strip().upper() for x in st.session_state.get("exclude_tickers", "").split(",") if x]
-    for ticker in ticker_list:
+    progress_bar = st.progress(0, text="Scanning tickers...")
+    for i, ticker in enumerate(ticker_list):
         if ticker in excluded:
+            log_debug(f"Excluded ticker: {ticker}")
             continue
         res = scan_stock(ticker)
         if res:
             results.append(res)
+        progress_bar.progress((i+1)/len(ticker_list))
+    progress_bar.empty()
     if results:
         df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         st.dataframe(df)
