@@ -48,17 +48,22 @@ def get_sp500_symbols():
 def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
-def send_email_alert(subject, body, html=None):
+def send_email_alert(subject, body=None, html=None):
     receiver = st.session_state.get("alert_email")
     if not receiver:
         return
+
     msg = EmailMessage()
-    msg.set_content(body)
     if html:
+        msg.set_content("This email contains an HTML table. Please view in an HTML-compatible email client.")
         msg.add_alternative(html, subtype='html')
+    else:
+        msg.set_content(body or "No data available.")
+
     msg["Subject"] = subject
     msg["From"] = "noreply@stockscanner.app"
     msg["To"] = receiver
+
     context = ssl.create_default_context()
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -66,7 +71,7 @@ def send_email_alert(subject, body, html=None):
             server.send_message(msg)
     except Exception as e:
         log_debug(f"Failed to send email: {e}")
-
+        
 def scan_stock(symbol):
     try:
         df = yf.Ticker(symbol).history(period="1mo")
@@ -120,6 +125,23 @@ def compute_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
+def format_email_table(df):
+    try:
+        styled = df[["Symbol", "Price", "RSI", "Volume", "Gap Up", "Score", "Reason"]].copy()
+        html_table = styled.to_html(index=False, border=0)
+        style_block = """
+        <style>
+            table { border-collapse: collapse; width: 100%; font-family: Arial; }
+            th, td { border: 1px solid #dddddd; text-align: center; padding: 8px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            th { background-color: #4CAF50; color: white; }
+        </style>
+        """
+        return style_block + html_table
+    except Exception as e:
+        log_debug(f"Error formatting email table: {e}")
+        return "<p>Failed to render table</p>"
+        
 def plot_chart(symbol):
     try:
         data = yf.Ticker(symbol).history(period="1mo")
