@@ -196,12 +196,12 @@ def perform_daily_scan():
     results_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)    
 
     if not results_df.empty:
-        symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
-        plot_chart(symbol_select)        
-       def highlight_row(row):
+        def highlight_row(row):
            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
             return ["background-color: {}".format(color)] * len(row)            
- 
+
+       symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
+       plot_chart(symbol_select)        
        st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
        html_body = format_email_table(results_df)
        send_email_alert("Stock Scanner Alert", html=html_body)
