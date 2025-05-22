@@ -200,10 +200,12 @@ def perform_daily_scan():
            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
            return ["background-color: {}".format(color)] * len(row)            
 
-        symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
-        plot_chart(symbol_select)        
         st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
         html_body = format_email_table(results_df)
+        
+        symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
+        plot_chart(symbol_select)        
+
         send_email_alert("Stock Scanner Alert", html=html_body)
     else:
         st.info("No matches found based on current filters.")            
