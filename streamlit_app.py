@@ -128,7 +128,7 @@ def compute_rsi(series, period=14):
 def format_email_table(df):
     try:
         styled = df[["Symbol", "Price", "RSI", "Volume", "Gap Up", "Score", "Reason"]].copy()
-        html_table = styled.to_html(index=False, border=0)
+        html_table = styled.to_html(index=False, border=1)
         style_block = """
         <style>
             table { border-collapse: collapse; width: 100%; font-family: Arial; }
@@ -142,6 +142,91 @@ def format_email_table(df):
         log_debug(f"Error formatting email table: {e}")
         return "<p>Failed to render table</p>"
         
+def perform_daily_scan():
+    strategy = st.session_state.get("symbol_strategy", "nasdaq")
+    if strategy == "sp500":
+        symbol_list = get_sp500_symbols()
+    elif strategy == "smallcap":
+        symbol_list = get_small_cap_symbols()
+    else:
+        symbol_list = get_nasdaq_symbols()
+
+    excluded = [x.strip().upper() for x in st.session_state.get("exclude_tickers", "").split(",") if x]
+    log_debug(f"Starting scan with {len(symbol_list)} tickers.")
+    log_debug(f"Excluded tickers: {excluded}")
+    progress_bar = st.progress(0, text="Scanning tickers...")
+
+    results = []
+    for i, symbol in enumerate(symbol_list):
+        if symbol in excluded:
+            log_debug(f"Skipping excluded ticker: {symbol}")
+            continue
+
+        log_debug(f"Scanning {symbol}")
+        result = scan_stock(symbol)
+
+        if result:
+            log_debug(f"Match found: {result}")
+            results.append(result)
+        else:
+            log_debug(f"No match for {symbol}")
+
+        progress_bar.progress((i + 1) / len(symbol_list))
+
+    progress_bar.empty()
+    results_df = pd.DataFrame(results)
+
+    if not results_df.empty:
+        html_body = format_email_table(results_df)
+        send_email_alert("Stock Scanner Alert", html=html_body)
+        return results_df
+    else:
+        st.info("No matches found based on current filters.")
+        send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
+        return pd.DataFrame()
+
+if st.button("Run Scan"):
+    st.session_state["scan_results"] = perform_daily_scan()
+
+if "scan_results" in st.session_state and not st.session_state.scan_results.empty:
+    results_df = st.session_state.scan_results
+
+    def highlight_row(row):
+        color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
+        return ["background-color: {}".format(color)] * len(row)
+
+    st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))
+
+    symbols = results_df["Symbol"].tolist()
+
+    if "selected_chart_symbol" not in st.session_state:
+        st.session_state.selected_chart_symbol = symbols[0]
+
+    def update_chart_symbol():
+        st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
+
+    st.selectbox("Select Symbol to View Chart", symbols,
+                 index=symbols.index(st.session_state.selected_chart_symbol),
+                 key="temp_chart_symbol",
+                 on_change=update_chart_symbol)
+
+    selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
+    df = yf.Ticker(selected_symbol).history(period="1mo")
+
+    fig = go.Figure(data=[go.Candlestick(
+        x=df.index,
+        open=df["Open"],
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"]
+    )])
+    st.plotly_chart(fig, use_container_width=True)
+
+if st.session_state.get("enable_debug") and "debug_log" in st.session_state:
+    with st.expander("Debug Log"):
+        for msg in st.session_state.debug_log:
+            st.text(msg)
+
 def plot_chart(symbol):
     try:
         data = yf.Ticker(symbol).history(period="1mo")
@@ -169,70 +254,6 @@ def plot_chart(symbol):
     except Exception as e:
         st.error(f"Failed to load chart: {e}")
 
-def perform_daily_scan():
-    results = []
-    excluded = [x.strip().upper() for x in st.session_state.get("exclude_tickers", "").split(",") if x]
-    log_debug(f"Starting scan with {len(ticker_list)} tickers.")
-    log_debug(f"Excluded tickers: {excluded}")
-    progress_bar = st.progress(0, text="Scanning tickers...")
-
-    for i, ticker in enumerate(ticker_list):
-        if ticker in excluded:
-            log_debug(f"Skipping excluded ticker: {ticker}")
-            continue
-
-        log_debug(f"Scanning {ticker}")
-        res = scan_stock(ticker)
-
-        if res:
-            log_debug(f"Match found: {res}")
-            results.append(res)
-        else:
-            log_debug(f"No match for {ticker}")
-
-        progress_bar.progress((i + 1) / len(ticker_list))
-
-    progress_bar.empty()
-    results_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)    
-
-    if not results_df.empty:
-        def highlight_row(row):
-           color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
-           return ["background-color: {}".format(color)] * len(row)            
-
-        st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
-        html_body = format_email_table(results_df)
-        send_email_alert("Stock Scanner Alert", html=html_body)
-
-    # After scan is done, display dropdown only for found symbols
-        if 'results_df' in locals() and not results_df.empty:
-            symbols = results_df["Symbol"].tolist()
-    
-        def update_chart_symbol():
-            st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
-
-        st.selectbox("Select Symbol to View Chart", symbols,
-                 index=0,
-                 key="temp_chart_symbol",
-                 on_change=update_chart_symbol)
-
-        selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
-
-        selected_symbol = st.session_state.get("selected_chart_symbol", "AAPL")
-    # Show chart
-        df = yf.Ticker(selected_symbol).history(period="1mo")
-        fig = go.Figure(data=[go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"]
-        )])
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No matches found based on current filters.")            
-        send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
-    
 def scheduler():
     schedule.clear()
     if scan_time_input:
@@ -292,7 +313,7 @@ with st.sidebar:
 st.title("📈 Stock Strategy Scanner")
 
 if st.button("▶️ Run Scan Now"):
-    perform_daily_scan()
+    st.session_state["scan_results"] = perform_daily_scan()
 
 if "scheduler_thread" not in st.session_state:
     thread = threading.Thread(target=scheduler, daemon=True)
