@@ -193,31 +193,22 @@ def perform_daily_scan():
         progress_bar.progress((i + 1) / len(ticker_list))
 
     progress_bar.empty()
-    
-    if results:
-        results_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-        def highlight_row(row):
-            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
-            return ["background-color: {}".format(color)] * len(row)
+    results_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)    
 
-
-
-        if "alert_email" in st.session_state and st.session_state.alert_email:
-            body = results_df.to_string(index=False)
-
-        if  not results_df.empty:
-            st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
-            html_body = format_email_table(results_df)
-            send_email_alert("Stock Scanner Alert", html=html_body)
-        else:
-            st.info("No matches found based on current filters.")            
-            send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
-    
+    if not results_df.empty:
         symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
-        plot_chart(symbol_select)
+        plot_chart(symbol_select)        
+       def highlight_row(row):
+           color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
+            return ["background-color: {}".format(color)] * len(row)            
+ 
+       st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
+       html_body = format_email_table(results_df)
+       send_email_alert("Stock Scanner Alert", html=html_body)
     else:
-        st.info("No matches found based on current filters.")
-
+       st.info("No matches found based on current filters.")            
+       send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
+    
 def scheduler():
     schedule.clear()
     if scan_time_input:
