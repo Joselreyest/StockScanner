@@ -198,7 +198,7 @@ def perform_daily_scan():
     if not results_df.empty:
         def highlight_row(row):
            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
-            return ["background-color: {}".format(color)] * len(row)            
+           return ["background-color: {}".format(color)] * len(row)            
 
         symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
         plot_chart(symbol_select)        
