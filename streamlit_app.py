@@ -202,11 +202,15 @@ def perform_daily_scan():
 
         st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))        
         html_body = format_email_table(results_df)
-        
-        symbol_select = st.selectbox("Select stock to view chart", df["Symbol"])
-        plot_chart(symbol_select)        
-
         send_email_alert("Stock Scanner Alert", html=html_body)
+
+        def update_chart_symbol():
+            st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
+
+        st.selectbox("Select Symbol", some_list, key="temp_chart_symbol", on_change=update_chart_symbol)
+
+        selected_symbol = st.session_state.get("selected_chart_symbol", "AAPL")
+        plot_chart(selected_symbol)
     else:
         st.info("No matches found based on current filters.")            
         send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
@@ -277,10 +281,7 @@ if "scheduler_thread" not in st.session_state:
     thread.start()
     st.session_state.scheduler_thread = thread
 
-if st.session_state.get("enable_debug", False):
-    if "debug_log" in st.session_state and st.session_state.debug_log:
-        st.subheader("🛠 Debug Log")
-        for entry in st.session_state.debug_log:
-            st.text(entry)
-    else:
-        st.info("Debug mode is enabled, but no logs have been generated yet.")
+if st.session_state.get("enable_debug", False) and "debug_log" in st.session_state:
+    with st.expander("🔍 Debug Log", expanded=False):
+        for line in st.session_state.debug_log:
+            st.text(line)
