@@ -204,10 +204,14 @@ def perform_daily_scan():
         html_body = format_email_table(results_df)
         send_email_alert("Stock Scanner Alert", html=html_body)
 
+    # After scan is done, display dropdown only for found symbols
+        if 'results_df' in locals() and not results_df.empty:
+            symbols = results_df["Symbol"].tolist()
+    
         def update_chart_symbol():
             st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
 
-        st.selectbox("Select Symbol to View Chart", symbol,
+        st.selectbox("Select Symbol to View Chart", symbols,
                  index=0,
                  key="temp_chart_symbol",
                  on_change=update_chart_symbol)
