@@ -207,7 +207,7 @@ def perform_daily_scan():
         def update_chart_symbol():
             st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
 
-        st.selectbox("Select Symbol to View Chart", symbols,
+        st.selectbox("Select Symbol to View Chart", symbol,
                  index=0,
                  key="temp_chart_symbol",
                  on_change=update_chart_symbol)
