@@ -193,17 +193,17 @@ def perform_daily_scan():
         progress_bar.progress((i + 1) / len(ticker_list))
 
     progress_bar.empty()
-
+    
     if results:
-        df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
+        results_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
         def highlight_row(row):
             color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
             return ["background-color: {}".format(color)] * len(row)
 
-        st.dataframe(df.style.apply(highlight_row, axis=1))
+        st.dataframe(results_df.style.apply(highlight_row, axis=1))
 
         if "alert_email" in st.session_state and st.session_state.alert_email:
-            body = df.to_string(index=False)
+            body = results_df.to_string(index=False)
 
         if "results_df" in locals() and not results_df.empty:
             html_body = format_email_table(results_df)
