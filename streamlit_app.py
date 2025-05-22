@@ -207,10 +207,24 @@ def perform_daily_scan():
         def update_chart_symbol():
             st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
 
-        st.selectbox("Select Symbol", some_list, key="temp_chart_symbol", on_change=update_chart_symbol)
+        st.selectbox("Select Symbol to View Chart", symbols,
+                 index=0,
+                 key="temp_chart_symbol",
+                 on_change=update_chart_symbol)
+
+        selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
 
         selected_symbol = st.session_state.get("selected_chart_symbol", "AAPL")
-        plot_chart(selected_symbol)
+    # Show chart
+        df = yf.Ticker(selected_symbol).history(period="1mo")
+        fig = go.Figure(data=[go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"]
+        )])
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No matches found based on current filters.")            
         send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
