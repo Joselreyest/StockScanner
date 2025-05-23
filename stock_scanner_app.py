@@ -48,38 +48,71 @@ def get_sp500_symbols():
 def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
-def send_email_alert(subject, body):
+def send_email_alert(subject, body=None, html=None):
     receiver = st.session_state.get("alert_email")
     if not receiver:
         return
+
     msg = EmailMessage()
-    msg.set_content(body)
+    if html:
+        msg.set_content("This email contains an HTML table. Please view in an HTML-compatible email client.")
+        msg.add_alternative(html, subtype='html')
+    else:
+        msg.set_content(body or "No data available.")
+
     msg["Subject"] = subject
     msg["From"] = "noreply@stockscanner.app"
     msg["To"] = receiver
+
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-        server.login(os.environ.get("EMAIL_USER"), os.environ.get("EMAIL_PASS"))
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(os.environ.get("EMAIL_USER"), os.environ.get("EMAIL_PASS"))
+            server.send_message(msg)
+    except Exception as e:
+        log_debug(f"Failed to send email: {e}")
 
 def scan_stock(symbol):
     try:
-        df = yf.Ticker(symbol).history(period="5d")
-        if df.empty or len(df) < 2:
+        df = yf.Ticker(symbol).history(period="1mo")
+        if df.empty or len(df) < 15:
+            log_debug(f"Failed: Not enough data for {symbol}")
             return None
         df["RSI"] = compute_rsi(df["Close"])
+        if df["RSI"].isnull().all():
+            log_debug(f"Failed: RSI is all None for {symbol}")
+            return None
         df["Volume Spike"] = df["Volume"] > (df["Volume"].shift(1) * st.session_state.volume_spike_factor)
         gap_up = df["Open"].iloc[-1] > df["Close"].iloc[-2] * st.session_state.gap_up_factor
         rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
         volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
-        score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
-        if all([gap_up, rsi_cond, volume_cond]):
+
+        failed_criteria = []
+        if not gap_up: failed_criteria.append("Gap Up")
+        if not rsi_cond: failed_criteria.append("RSI")
+        if not volume_cond: failed_criteria.append("Volume")
+
+        if failed_criteria:
+            log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
             return {
                 "Symbol": symbol,
+                "Price": df["Close"].iloc[-1],
                 "RSI": df["RSI"].iloc[-1],
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
-                "Score": score
+                "Score": 0,
+                "Reason": ", ".join(failed_criteria)
+            }
+        else:
+            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
+            return {
+                "Symbol": symbol,
+                "Price": df["Close"].iloc[-1],
+                "RSI": df["RSI"].iloc[-1],
+                "Volume": df["Volume"].iloc[-1],
+                "Gap Up": gap_up,
+                "Score": score,
+                "Reason": "Matched"
             }
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
