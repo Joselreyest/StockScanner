@@ -28,12 +28,12 @@ st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
 @st.cache_data
 def get_nasdaq_symbols():
-    url = "https://en.wikipedia.org/wiki/NASDAQ-100"
-    html = requests.get(url).text
-    soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table", {"id": "constituents"})
-    tickers = pd.read_html(str(table))[0]["Ticker"].tolist()
-    return [ticker.replace(".", "-") for ticker in tickers]
+    url = "https://api.nasdaq.com/api/screener/stocks?exchange=nasdaq&download=true"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    tickers = [row["symbol"] for row in data["data"]["rows"]]
+    return tickers
 
 @st.cache_data
 def get_sp500_symbols():
@@ -176,6 +176,23 @@ def perform_daily_scan():
     else:
         st.info("No matches found based on current filters.")
 
+def format_email_table(df):
+    try:
+        styled = df[["Symbol", "Price", "RSI", "Volume", "Gap Up", "Score", "Reason"]].copy()
+        html_table = styled.to_html(index=False, border=0)
+        style_block = """
+        <style>
+            table { border-collapse: collapse; width: 100%; font-family: Arial; }
+            th, td { border: 1px solid #dddddd; text-align: center; padding: 8px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            th { background-color: #4CAF50; color: white; }
+        </style>
+        """
+        return style_block + html_table
+    except Exception as e:
+        log_debug(f"Error formatting email table: {e}")
+        return "<p>Failed to render table</p>"
+        
 def scheduler():
     schedule.clear()
     if scan_time_input:
