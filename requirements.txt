@@ -9,3 +9,4 @@ schedule
 scikit-learn
 beautifulsoup4
 requests
+nltk
