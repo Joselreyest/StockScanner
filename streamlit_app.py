@@ -193,18 +193,21 @@ if "scan_results" in st.session_state:
     matched_df = results_df[results_df["Reason"] == "Matched"]
     if not matched_df.empty:
 
-    def highlight_row(row):
-        color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
-        return ["background-color: {}".format(color)] * len(row)
+        def highlight_row(row):
+            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
+            return ["background-color: {}".format(color)] * len(row)
 
-    st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))
+        st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))
 
-    symbols = matched_df["Symbol"].tolist()
+        symbols = matched_df["Symbol"].tolist()
 
-    if "selected_chart_symbol" not in st.session_state:
+        if "selected_chart_symbol" not in st.session_state:
             st.session_state.selected_chart_symbol = symbols[0]
 
-    def update_chart_symbol():        with st.container():
+        def update_chart_symbol():        
+            st.session_state.selected_chart_symbol= st.session_state.temp_chart_symbol
+            
+        with st.container():
             st.selectbox("Select Symbol to View Chart", symbols,
                          index=symbols.index(st.session_state.selected_chart_symbol),
                          key="temp_chart_symbol",
@@ -246,7 +249,6 @@ if "scan_results" in st.session_state:
             )
 
             st.plotly_chart(fig, use_container_width=True)
-            st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
 
     with st.container():
         st.selectbox("Select Symbol to View Chart", symbols,
