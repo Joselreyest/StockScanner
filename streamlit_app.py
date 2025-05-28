@@ -161,7 +161,7 @@ def scan_stock(symbol):
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
-
+ 
 def compute_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
