@@ -174,7 +174,11 @@ def scan_stock(symbol):
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
         return None
- 
+
+# Ensure results_df and matched_df are initialized to prevent NameError
+results_df = pd.DataFrame()
+matched_df = pd.DataFrame()
+
 def compute_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
