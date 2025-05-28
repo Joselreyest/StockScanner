@@ -58,6 +58,19 @@ def get_sp500_symbols():
 def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
+# Index selection and symbol list setup
+index_choice = st.sidebar.selectbox("Choose Index", ["NASDAQ", "S&P 500", "Small Cap"])
+if index_choice == "NASDAQ":
+    symbols = get_nasdaq_symbols()
+elif index_choice == "S&P 500":
+    symbols = get_sp500_symbols()
+else:
+    symbols = get_small_cap_symbols()
+
+default_symbol = "AAPL"
+if default_symbol not in symbols:
+    symbols.insert(0, default_symbol)
+
 def send_email_alert(subject, body=None, html=None):
     receiver = st.session_state.get("alert_email")
     if not receiver:
