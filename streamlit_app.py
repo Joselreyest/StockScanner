@@ -23,6 +23,9 @@ import requests
 from bs4 import BeautifulSoup
 import schedule
 from sklearn.linear_model import LinearRegression
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import nltk
+nltk.download('vader_lexicon')
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
@@ -71,6 +74,28 @@ def send_email_alert(subject, body=None, html=None):
             server.send_message(msg)
     except Exception as e:
         log_debug(f"Failed to send email: {e}")
+
+def get_news_sentiment(symbol):
+    try:
+        url = f"https://newsapi.org/v2/everything?q={symbol}&sortBy=publishedAt&pageSize=5&apiKey={os.environ['NEWS_API_KEY']}"
+        response = requests.get(url)
+        articles = response.json().get("articles", [])
+
+        if not articles:
+            return 0
+
+        analyzer = SentimentIntensityAnalyzer()
+        scores = []
+        for article in articles:
+            headline = article["title"] + ". " + article.get("description", "")
+            sentiment = analyzer.polarity_scores(headline)
+            scores.append(sentiment["compound"])
+
+        avg_score = np.mean(scores)
+        return avg_score
+    except Exception as e:
+        log_debug(f"Sentiment fetch error for {symbol}: {e}")
+        return 0
         
 def scan_stock(symbol):
     try:
@@ -87,6 +112,8 @@ def scan_stock(symbol):
         rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
         volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
 
+        sentiment_score = get_news_sentiment(symbol)
+
         failed_criteria = []
         if not gap_up: failed_criteria.append("Gap Up")
         if not rsi_cond: failed_criteria.append("RSI")
@@ -101,18 +128,20 @@ def scan_stock(symbol):
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
                 "Score": 0,
-                "Reason": ", ".join(failed_criteria)
+                "Reason": ", ".join(failed_criteria),
+                "Sentiment": sentiment_score
             }
         else:
-            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
+            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]]) + sentiment_score
             return {
                 "Symbol": symbol,
                 "Price": df["Close"].iloc[-1],
                 "RSI": df["RSI"].iloc[-1],
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
-                "Score": score,
-                "Reason": "Matched"
+                "Score": round(score, 2),
+                "Reason": "Matched",
+                "Sentiment": sentiment_score
             }
     except Exception as e:
         log_debug(f"Error scanning {symbol}: {e}")
