@@ -25,7 +25,10 @@ import schedule
 from sklearn.linear_model import LinearRegression
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
-nltk.download('vader_lexicon')
+try:
+    _ = nltk.data.find('sentiment/vader_lexicon.zip')
+except LookupError:
+    nltk.download('vader_lexicon')
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
@@ -77,7 +80,11 @@ def send_email_alert(subject, body=None, html=None):
 
 def get_news_sentiment(symbol):
     try:
-        url = f"https://newsapi.org/v2/everything?q={symbol}&sortBy=publishedAt&pageSize=5&apiKey={os.environ['NEWS_API_KEY']}"
+        api_key = os.environ.get('NEWS_API_KEY')
+        if not api_key:
+            raise ValueError("NEWS_API_KEY not set in environment variables.")
+        url = f"https://newsapi.org/v2/everything?q={symbol}&sortBy=publishedAt&pageSize=5&apiKey={api_key}"
+
         response = requests.get(url)
         articles = response.json().get("articles", [])
 
