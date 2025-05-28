@@ -312,6 +312,9 @@ with st.container():
     st.plotly_chart(fig, use_container_width=True)
 
     with st.container():
+        def update_chart_symbol():
+            log_debug("Chart symbol updated.")        
+            
         st.selectbox("Select Symbol to View Chart", symbols,
                      index=symbols.index(st.session_state.selected_chart_symbol),
                      key="temp_chart_symbol",
