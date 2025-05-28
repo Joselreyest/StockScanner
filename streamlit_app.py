@@ -33,6 +33,9 @@ except LookupError:
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
+st.session_state.min_sentiment_score = st.sidebar.slider("Minimum Sentiment Score", -1.0, 1.0, 0.0)
+st.session_state.sentiment_weight = st.sidebar.slider("Sentiment Score Weight", 0.0, 1.0, 0.2, 0.05)
+
 @st.cache_data
 def get_nasdaq_symbols():
     url = "https://api.nasdaq.com/api/screener/stocks?exchange=nasdaq&download=true"
@@ -100,6 +103,8 @@ def get_news_sentiment(symbol):
             scores.append(sentiment["compound"])
 
         avg_score = np.mean(scores)
+
+        log_debug(f"{symbol} sentiment articles: {[a['title'] for a in articles]}")
         return avg_score
     except Exception as e:
         log_debug(f"Sentiment fetch error for {symbol}: {e}")
@@ -126,6 +131,7 @@ def scan_stock(symbol):
         if not gap_up: failed_criteria.append("Gap Up")
         if not rsi_cond: failed_criteria.append("RSI")
         if not volume_cond: failed_criteria.append("Volume")
+        if sentiment_score < st.session_state.min_sentiment_score: failed_criteria.append("Sentiment")
 
         if failed_criteria:
             log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
@@ -140,14 +146,15 @@ def scan_stock(symbol):
                 "Sentiment": sentiment_score
             }
         else:
-            score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]]) + sentiment_score
+            strategy_score = sum([gap_up, rsi_cond, df["Volume Spike"].iloc[-1]])
+            total_score = round(strategy_score + (st.session_state.sentiment_weight * sentiment_score), 2)
             return {
                 "Symbol": symbol,
                 "Price": df["Close"].iloc[-1],
                 "RSI": df["RSI"].iloc[-1],
                 "Volume": df["Volume"].iloc[-1],
                 "Gap Up": gap_up,
-                "Score": round(score, 2),
+                "Score": total_score,
                 "Reason": "Matched",
                 "Sentiment": sentiment_score
             }
