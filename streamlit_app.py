@@ -188,8 +188,10 @@ def perform_daily_scan():
 if st.button("Run Scan"):
     st.session_state["scan_results"] = perform_daily_scan()
 
-if "scan_results" in st.session_state and not st.session_state.scan_results.empty:
+if "scan_results" in st.session_state:
     results_df = st.session_state.scan_results
+    matched_df = results_df[results_df["Reason"] == "Matched"]
+    if not matched_df.empty:
 
     def highlight_row(row):
         color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
@@ -197,13 +199,54 @@ if "scan_results" in st.session_state and not st.session_state.scan_results.empt
 
     st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))
 
-    symbols = results_df["Symbol"].tolist()
+    symbols = matched_df["Symbol"].tolist()
 
     if "selected_chart_symbol" not in st.session_state:
-        st.session_state.selected_chart_symbol = symbols[0]
+            st.session_state.selected_chart_symbol = symbols[0]
 
-    def update_chart_symbol():
-        st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
+    def update_chart_symbol():        with st.container():
+            st.selectbox("Select Symbol to View Chart", symbols,
+                         index=symbols.index(st.session_state.selected_chart_symbol),
+                         key="temp_chart_symbol",
+                         on_change=update_chart_symbol)
+
+            selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
+
+            @st.cache_data(show_spinner=False)
+            def get_chart_data(symbol):
+                return yf.Ticker(symbol).history(period="1mo")
+
+            df = get_chart_data(selected_symbol)
+
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+            fig.add_trace(go.Candlestick(
+                x=df.index,
+                open=df["Open"],
+                high=df["High"],
+                low=df["Low"],
+                close=df["Close"],
+                name="Price"
+            ), secondary_y=False)
+
+            fig.add_trace(go.Bar(
+                x=df.index,
+                y=df["Volume"],
+                name="Volume",
+                marker_color='lightblue',
+                opacity=0.4
+            ), secondary_y=True)
+
+            fig.update_layout(
+                title=f"Candlestick Chart with Volume for {selected_symbol}",
+                xaxis_title="Date",
+                yaxis_title="Price",
+                yaxis2_title="Volume",
+                xaxis_rangeslider_visible=True,
+                height=600
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+            st.session_state.selected_chart_symbol = st.session_state.temp_chart_symbol
 
     with st.container():
         st.selectbox("Select Symbol to View Chart", symbols,
