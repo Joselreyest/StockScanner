@@ -176,6 +176,12 @@ def scan_stock(symbol):
         return None
 
 # Ensure results_df and matched_df are initialized to prevent NameError
+if "results_df" not in st.session_state:
+    st.session_state.results_df = pd.DataFrame()
+
+if "matched_df" not in st.session_state:
+    st.session_state.matched_df = pd.DataFrame()
+    
 results_df = pd.DataFrame()
 matched_df = pd.DataFrame()
 
