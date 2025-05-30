@@ -1,14 +1,3 @@
-def log_debug(msg):
-    debug_enabled = st.session_state.get("enable_debug", False)
-    if debug_enabled:
-        if "debug_log" not in st.session_state:
-            st.session_state.debug_log = []
-        st.session_state.debug_log.append(msg)
-        try:
-            print("DEBUG:", msg)
-        except Exception:
-            pass
-
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -33,9 +22,28 @@ except LookupError:
 
 st.set_page_config(page_title="Stock Strategy Scanner", layout="wide")
 
+# Sidebar settings
+st.sidebar.title("Scanner Filters")
+st.session_state.volume_spike_factor = st.sidebar.slider("Volume Spike Multiplier", 1.0, 3.0, 1.5)
+st.session_state.gap_up_factor = st.sidebar.slider("Gap Up Factor", 1.00, 1.10, 1.02)
+st.session_state.rsi_max = st.sidebar.slider("Max RSI", 50, 80, 70)
+st.session_state.min_volume = st.sidebar.slider("Min Volume", 100000, 10000000, 1000000)
 st.session_state.min_sentiment_score = st.sidebar.slider("Minimum Sentiment Score", -1.0, 1.0, 0.0)
 st.session_state.sentiment_weight = st.sidebar.slider("Sentiment Score Weight", 0.0, 1.0, 0.2, 0.05)
+st.session_state.alert_email = st.sidebar.text_input("Alert Email")
+st.session_state.enable_debug = st.sidebar.checkbox("Enable Debug Log")
 
+def log_debug(msg):
+    debug_enabled = st.session_state.get("enable_debug", False)
+    if debug_enabled:
+        if "debug_log" not in st.session_state:
+            st.session_state.debug_log = []
+        st.session_state.debug_log.append(msg)
+        try:
+            print("DEBUG:", msg)
+        except Exception:
+            pass
+            
 @st.cache_data
 def get_nasdaq_symbols():
     url = "https://api.nasdaq.com/api/screener/stocks?exchange=nasdaq&download=true"
@@ -58,23 +66,30 @@ def get_sp500_symbols():
 def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
-# Index selection and symbol list setup
-index_choice = st.sidebar.selectbox("Choose Index", ["NASDAQ", "S&P 500", "Small Cap","Upload CSV"])
-uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if index_choice == "Upload CSV" else None
+@st.cache_data
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
-if index_choice == "NASDAQ":
-    symbols = get_nasdaq_symbols()
-elif index_choice == "S&P 500":
-    symbols = get_sp500_symbols()
-elif index_choice == "Small Cap":
-    symbols = get_small_cap_symbols()
-elif uploaded_file:
-     df = pd.read_csv(uploaded_file)
-     symbols = df.iloc[:, 0].dropna().astype(str).str.upper().tolist()    
-
-default_symbol = "AAPL"
-if default_symbol not in symbols:
-    symbols.insert(0, default_symbol)
+def format_email_table(df):
+    try:
+        styled = df[["Symbol", "Price", "RSI", "Volume", "Gap Up", "Score", "Reason"]].copy()
+        html_table = styled.to_html(index=False, border=1)
+        style_block = """
+        <style>
+            table { border-collapse: collapse; width: 100%; font-family: Arial; }
+            th, td { border: 1px solid #dddddd; text-align: center; padding: 8px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            th { background-color: #4CAF50; color: white; }
+        </style>
+        """
+        return style_block + html_table
+    except Exception as e:
+        log_debug(f"Error formatting email table: {e}")
+        return "<p>Failed to render table</p>"
 
 def send_email_alert(subject, body=None, html=None):
     receiver = st.session_state.get("alert_email")
@@ -99,35 +114,30 @@ def send_email_alert(subject, body=None, html=None):
             server.send_message(msg)
     except Exception as e:
         log_debug(f"Failed to send email: {e}")
-
+        
 def get_news_sentiment(symbol):
     try:
         api_key = os.environ.get("NEWS_API_KEY")
         if not api_key:
             raise ValueError("NEWS_API_KEY not set in environment variables.")
-
         url = f"https://newsapi.org/v2/everything?q={symbol}&sortBy=publishedAt&pageSize=5&apiKey={api_key}"
         response = requests.get(url)
         articles = response.json().get("articles", [])
-
         if not articles:
             return 0
-
         analyzer = SentimentIntensityAnalyzer()
         scores = []
         for article in articles:
             headline = article["title"] + ". " + article.get("description", "")
             sentiment = analyzer.polarity_scores(headline)
             scores.append(sentiment["compound"])
-
         avg_score = np.mean(scores)
-
         log_debug(f"{symbol} sentiment articles: {[a['title'] for a in articles]}")
         return avg_score
     except Exception as e:
         log_debug(f"Sentiment fetch error for {symbol}: {e}")
         return 0
-        
+
 def scan_stock(symbol):
     try:
         df = yf.Ticker(symbol).history(period="1mo")
@@ -142,15 +152,12 @@ def scan_stock(symbol):
         gap_up = df["Open"].iloc[-1] > df["Close"].iloc[-2] * st.session_state.gap_up_factor
         rsi_cond = df["RSI"].iloc[-1] < st.session_state.rsi_max
         volume_cond = df["Volume"].iloc[-1] > st.session_state.min_volume
-
         sentiment_score = get_news_sentiment(symbol)
-
         failed_criteria = []
         if not gap_up: failed_criteria.append("Gap Up")
         if not rsi_cond: failed_criteria.append("RSI")
         if not volume_cond: failed_criteria.append("Volume")
         if sentiment_score < st.session_state.min_sentiment_score: failed_criteria.append("Sentiment")
-
         if failed_criteria:
             log_debug(f"{symbol} failed: {', '.join(failed_criteria)}")
             return {
@@ -180,40 +187,41 @@ def scan_stock(symbol):
         log_debug(f"Error scanning {symbol}: {e}")
         return None
 
-# Ensure results_df and matched_df are initialized to prevent NameError
-if "results_df" not in st.session_state:
-    st.session_state.results_df = pd.DataFrame()
-
-if "matched_df" not in st.session_state:
-    st.session_state.matched_df = pd.DataFrame()
-    
-results_df = pd.DataFrame()
-matched_df = pd.DataFrame()
-
-def compute_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-def format_email_table(df):
+def plot_chart(symbol):
     try:
-        styled = df[["Symbol", "Price", "RSI", "Volume", "Gap Up", "Score", "Reason"]].copy()
-        html_table = styled.to_html(index=False, border=1)
-        style_block = """
-        <style>
-            table { border-collapse: collapse; width: 100%; font-family: Arial; }
-            th, td { border: 1px solid #dddddd; text-align: center; padding: 8px; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            th { background-color: #4CAF50; color: white; }
-        </style>
-        """
-        return style_block + html_table
+        data = yf.Ticker(symbol).history(period="1mo")
+        data["RSI"] = compute_rsi(data["Close"])
+        data["SMA20"] = data["Close"].rolling(window=20).mean()
+        data["SMA50"] = data["Close"].rolling(window=50).mean()
+        data["UpperBB"] = data["Close"].rolling(window=20).mean() + 2*data["Close"].rolling(window=20).std()
+        data["LowerBB"] = data["Close"].rolling(window=20).mean() - 2*data["Close"].rolling(window=20).std()
+
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.6, 0.2, 0.2])
+        fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"]), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA 20"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA 50"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["UpperBB"], mode="lines", name="Upper BB", line=dict(dash='dot')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["LowerBB"], mode="lines", name="Lower BB", line=dict(dash='dot')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=data["RSI"], mode="lines", name="RSI"), row=2, col=1)
+
+        macd_line = data["Close"].ewm(span=12).mean() - data["Close"].ewm(span=26).mean()
+        signal_line = macd_line.ewm(span=9).mean()
+        fig.add_trace(go.Scatter(x=data.index, y=macd_line, mode="lines", name="MACD Line"), row=3, col=1)
+        fig.add_trace(go.Scatter(x=data.index, y=signal_line, mode="lines", name="Signal Line"), row=3, col=1)
+
+        fig.update_layout(title=f"{symbol} Chart with Indicators")
+        st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        log_debug(f"Error formatting email table: {e}")
-        return "<p>Failed to render table</p>"
+        st.error(f"Failed to load chart: {e}")
         
+def scheduler():
+    schedule.clear()
+    if scan_time_input:
+        schedule.every().day.at(scan_time_input.strftime("%H:%M")).do(perform_daily_scan)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
 def perform_daily_scan():
     strategy = st.session_state.get("symbol_strategy", "nasdaq")
     if strategy == "sp500":
@@ -257,112 +265,9 @@ def perform_daily_scan():
         send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
         return pd.DataFrame()
 
-if st.button("Run Scan"):
-    st.session_state["scan_results"] = perform_daily_scan()
 
-if "scan_results" in st.session_state:
-    results_df = st.session_state.scan_results
-    matched_df = results_df[results_df["Reason"] == "Matched"]
-    if not matched_df.empty:
 
-        def highlight_row(row):
-            color = "#d4edda" if row.get("Reason") == "Matched" else "#f8d7da"
-            return ["background-color: {}".format(color)] * len(row)
 
-        st.dataframe(results_df.sort_values(by="Score", ascending=False).style.apply(highlight_row, axis=1))
-
-        symbols = matched_df["Symbol"].tolist()
-
-with st.container():
-    # Ensure a valid default is set
-    default_symbol = st.session_state.get("selected_chart_symbol", None)
-    if default_symbol not in symbols:
-        default_symbol = symbols[0]
-        st.session_state.selected_chart_symbol = default_symbol
-
-    selected_symbol = st.selectbox(
-        "Select Symbol to View Chart",
-        symbols,
-        index=symbols.index(default_symbol),
-        key="selected_chart_symbol"
-    )
-
-    @st.cache_data(show_spinner=False)
-    def get_chart_data(symbol):
-        return yf.Ticker(symbol).history(period="1mo")
-
-    df = get_chart_data(selected_symbol)
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df["Open"],
-        high=df["High"],
-        low=df["Low"],
-        close=df["Close"],
-        name="Price"
-    ), secondary_y=False)
-
-    fig.add_trace(go.Bar(
-        x=df.index,
-        y=df["Volume"],
-        name="Volume",
-        marker_color='lightblue',
-        opacity=0.4
-    ), secondary_y=True)
-
-    fig.update_layout(
-        title=f"Candlestick Chart with Volume for {selected_symbol}",
-        xaxis_title="Date",
-        yaxis_title="Price",
-        yaxis2_title="Volume",
-        xaxis_rangeslider_visible=True,
-        height=600
-    )
-
-    st.plotly_chart(fig, use_container_width=True, key=f"chart_{st.session_state.get('selected_symbol', 'default')}")
-
-   
-
-if st.session_state.get("enable_debug") and "debug_log" in st.session_state:
-    with st.expander("Debug Log"):
-        for msg in st.session_state.debug_log:
-            st.text(msg)
-
-def plot_chart(symbol):
-    try:
-        data = yf.Ticker(symbol).history(period="1mo")
-        data["RSI"] = compute_rsi(data["Close"])
-        data["SMA20"] = data["Close"].rolling(window=20).mean()
-        data["SMA50"] = data["Close"].rolling(window=50).mean()
-        data["UpperBB"] = data["Close"].rolling(window=20).mean() + 2*data["Close"].rolling(window=20).std()
-        data["LowerBB"] = data["Close"].rolling(window=20).mean() - 2*data["Close"].rolling(window=20).std()
-
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.6, 0.2, 0.2])
-        fig.add_trace(go.Candlestick(x=data.index, open=data["Open"], high=data["High"], low=data["Low"], close=data["Close"]), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA 20"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA 50"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=data["UpperBB"], mode="lines", name="Upper BB", line=dict(dash='dot')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=data["LowerBB"], mode="lines", name="Lower BB", line=dict(dash='dot')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=data["RSI"], mode="lines", name="RSI"), row=2, col=1)
-
-        macd_line = data["Close"].ewm(span=12).mean() - data["Close"].ewm(span=26).mean()
-        signal_line = macd_line.ewm(span=9).mean()
-        fig.add_trace(go.Scatter(x=data.index, y=macd_line, mode="lines", name="MACD Line"), row=3, col=1)
-        fig.add_trace(go.Scatter(x=data.index, y=signal_line, mode="lines", name="Signal Line"), row=3, col=1)
-
-        fig.update_layout(title=f"{symbol} Chart with Indicators")
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Failed to load chart: {e}")
-
-def scheduler():
-    schedule.clear()
-    if scan_time_input:
-        schedule.every().day.at(scan_time_input.strftime("%H:%M")).do(perform_daily_scan)
-    while True:
-        schedule.run_pending()
-        time.sleep(30)
 
 with st.sidebar:
     st.image("logo.png", width=180)
