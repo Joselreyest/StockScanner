@@ -59,13 +59,20 @@ def get_small_cap_symbols():
     return ["AVXL", "PLTR", "BB", "MVIS", "NNDM", "HIMS"]
 
 # Index selection and symbol list setup
-index_choice = st.sidebar.selectbox("Choose Index", ["NASDAQ", "S&P 500", "Small Cap"])
+index_choice = st.sidebar.selectbox("Choose Index", ["NASDAQ", "S&P 500", "Small Cap","Upload CSV"])
+uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if source_option == "Upload CSV" else None
+
 if index_choice == "NASDAQ":
     symbols = get_nasdaq_symbols()
 elif index_choice == "S&P 500":
     symbols = get_sp500_symbols()
-else:
+elif index_choice == ""Small Cap":
     symbols = get_small_cap_symbols()
+elif uploaded_file:
+     df = pd.read_csv(uploaded_file)
+     symbols = df.iloc[:, 0].dropna().astype(str).str.upper().tolist()    
+else:
+    symbols = None
 
 default_symbol = "AAPL"
 if default_symbol not in symbols:
