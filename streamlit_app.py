@@ -66,7 +66,7 @@ if index_choice == "NASDAQ":
     symbols = get_nasdaq_symbols()
 elif index_choice == "S&P 500":
     symbols = get_sp500_symbols()
-elif index_choice == ""Small Cap":
+elif index_choice == "Small Cap":
     symbols = get_small_cap_symbols()
 elif uploaded_file:
      df = pd.read_csv(uploaded_file)
