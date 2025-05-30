@@ -60,7 +60,7 @@ def get_small_cap_symbols():
 
 # Index selection and symbol list setup
 index_choice = st.sidebar.selectbox("Choose Index", ["NASDAQ", "S&P 500", "Small Cap","Upload CSV"])
-uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if source_option == "Upload CSV" else None
+uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if index_choice == "Upload CSV" else None
 
 if index_choice == "NASDAQ":
     symbols = get_nasdaq_symbols()
