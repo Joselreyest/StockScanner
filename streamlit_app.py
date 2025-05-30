@@ -71,8 +71,6 @@ elif index_choice == "Small Cap":
 elif uploaded_file:
      df = pd.read_csv(uploaded_file)
      symbols = df.iloc[:, 0].dropna().astype(str).str.upper().tolist()    
-else:
-    symbols = None
 
 default_symbol = "AAPL"
 if default_symbol not in symbols:
