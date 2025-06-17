@@ -269,8 +269,6 @@ with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
     st.caption("by Jose Reyes")
-    st.checkbox("Enable Debug Mode", key="enable_debug")
-    st.text_input("Email to notify (optional)", key="alert_email")
     st.text_input("Exclude tickers (comma separated)", key="exclude_tickers")
     scan_time_input = st.time_input("Schedule Daily Scan", key="scan_time")
 
@@ -289,10 +287,6 @@ with st.sidebar:
     else:
         ticker_list = []
 
-    st.number_input("Minimum Volume", min_value=0, value=100000, key="min_volume")
-    st.slider("Max RSI", min_value=0, max_value=100, value=70, key="rsi_max")
-    st.slider("Volume Spike Factor", min_value=1.0, max_value=5.0, value=1.5, step=0.1, key="volume_spike_factor")
-    st.slider("Gap Up Factor", min_value=1.0, max_value=2.0, value=1.02, step=0.01, key="gap_up_factor")
 
     if st.button("💾 Save Filter Preset"):
         preset = {
