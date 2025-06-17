@@ -344,7 +344,8 @@ if "scan_results" in st.session_state:
                 key="selected_chart_symbol"
             )
 
-          @st.cache_data(show_spinner=False)
+            @st.cache_data(show_spinner=False)
+            
             def get_chart_data(symbol):
                 return yf.Ticker(symbol).history(period="1mo")
 
