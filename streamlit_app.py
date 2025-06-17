@@ -331,6 +331,7 @@ if "scan_results" in st.session_state:
 
 with st.container():
     # Ensure a valid default is set
+    symbols = matched_df["Symbol"].tolist()
     default_symbol = st.session_state.get("selected_chart_symbol", None)
     if default_symbol not in symbols:
         default_symbol = symbols[0]
