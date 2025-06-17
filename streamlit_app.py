@@ -380,6 +380,49 @@ if "scan_results" in st.session_state:
 
             st.plotly_chart(fig, use_container_width=True)
 
+           with st.container():
+                st.selectbox("Select Symbol to View Chart", symbols,
+                     index=symbols.index(st.session_state.selected_chart_symbol),
+                     key="temp_chart_symbol",
+                     on_change=update_chart_symbol)
+
+                selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
+
+                @st.cache_data(show_spinner=False)
+                def get_chart_data(symbol):
+                    return yf.Ticker(symbol).history(period="1mo")
+
+                df = get_chart_data(selected_symbol)
+
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df["Open"],
+                    high=df["High"],
+                    low=df["Low"],
+                    close=df["Close"],
+                    name="Price"
+                ), secondary_y=False)
+
+                fig.add_trace(go.Bar(
+                    x=df.index,
+                    y=df["Volume"],
+                    name="Volume",
+                    marker_color='lightblue',
+                    opacity=0.4
+                ), secondary_y=True)
+
+                fig.update_layout(
+                    title=f"Candlestick Chart with Volume for {selected_symbol}",
+                    xaxis_title="Date",
+                    yaxis_title="Price",
+                    yaxis2_title="Volume",
+                    xaxis_rangeslider_visible=True,
+                    height=600
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+
 
 if "scheduler_thread" not in st.session_state:
     thread = threading.Thread(target=scheduler, daemon=True)
