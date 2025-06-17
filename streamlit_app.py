@@ -120,7 +120,10 @@ def compute_features_for_universe(symbols):
         })
     df = pd.DataFrame(rows).set_index("Symbol")
     scaler = StandardScaler()
-    df[:] = scaler.fit_transform(df)
+    df = df.dropna()
+    if df.empty:
+        raise ValueError("No valid feature rows to process after dropping NaNs.")
+    df.loc[:, :] = scaler.fit_transform(df)
     return df
 
 def format_email_table(df: pd.DataFrame) -> str:
