@@ -265,10 +265,6 @@ def perform_daily_scan():
         send_email_alert("Stock Scanner Alert", body="No matches found for today's scan.")
         return pd.DataFrame()
 
-
-
-
-
 with st.sidebar:
     st.image("logo.png", width=180)
     st.markdown("**Stock Strategy Scanner**")
