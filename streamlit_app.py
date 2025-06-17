@@ -380,11 +380,11 @@ if "scan_results" in st.session_state:
 
             st.plotly_chart(fig, use_container_width=True)
 
-           with st.container():
+            with st.container():
                 st.selectbox("Select Symbol to View Chart", symbols,
-                     index=symbols.index(st.session_state.selected_chart_symbol),
-                     key="temp_chart_symbol",
-                     on_change=update_chart_symbol)
+                             index=symbols.index(st.session_state.selected_chart_symbol),
+                             key="temp_chart_symbol",
+                             on_change=update_chart_symbol)
 
                 selected_symbol = st.session_state.get("selected_chart_symbol", symbols[0])
 
