@@ -223,14 +223,18 @@ def scheduler():
         time.sleep(30)
 
 def perform_daily_scan():
-    strategy = st.session_state.get("symbol_strategy", "nasdaq")
-    if strategy == "sp500":
-        symbol_list = get_sp500_symbols()
-    elif strategy == "smallcap":
-        symbol_list = get_small_cap_symbols()
-    else:
+    if source_option == "NASDAQ":
         symbol_list = get_nasdaq_symbols()
-
+    elif source_option == "S&P 500":
+        symbol_list = get_sp500_symbols()
+    elif source_option == "Small Caps":
+        symbol_list = get_small_cap_symbols()
+    elif uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        symbol_list = df.iloc[:, 0].dropna().astype(str).str.upper().tolist()
+    else:
+        symbol_list = []
+        
     excluded = [x.strip().upper() for x in st.session_state.get("exclude_tickers", "").split(",") if x]
     log_debug(f"Starting scan with {len(symbol_list)} tickers.")
     log_debug(f"Excluded tickers: {excluded}")
@@ -275,7 +279,7 @@ with st.sidebar:
     source_option = st.selectbox("Select Ticker Source", ["NASDAQ", "S&P 500", "Small Caps", "Upload CSV"])    
     uploaded_file = st.file_uploader("Upload CSV (Ticker column)", type=["csv"]) if source_option == "Upload CSV" else None
 
-    if source_option == "NASDAQ 100":
+    if source_option == "NASDAQ":
         ticker_list = get_nasdaq_symbols()
     elif source_option == "S&P 500":
         ticker_list = get_sp500_symbols()
